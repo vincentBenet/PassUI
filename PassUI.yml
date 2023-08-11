@@ -1,0 +1,12 @@
+environment:
+    GnuPG path: ""
+    Gpg4win path: ""
+    Git path: ""
+
+variables:
+    PYPASS_GPG_BIN: gpg2
+    PYPASS_GIT_BIN: git
+    PYPASS_STORE_DIR: D:\Synology\GDriveGadz\PASS
+
+settings:
+    git_folder_name: .git
