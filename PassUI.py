@@ -1,6 +1,16 @@
-import shutil
+# TODO: Drag n drop passwords
+# TODO: Rename file (right click)
+# TODO: Rename file (table)
+# TODO: Change infos (key & values)
+# TODO: Add folder (right click)
+# TODO: Add new info
+# TODO: Remove info (right click)
 
-from PyQt5 import QtWidgets, uic, QtCore, QtGui
+# TODO: Git tab widget
+
+
+import shutil
+from PyQt5 import QtWidgets, uic, QtCore
 import os
 import sys
 import yaml
@@ -8,17 +18,20 @@ import pyperclip
 from pathlib import Path
 import passpy
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QTreeWidgetItem, QTableWidgetItem, QMenu, QAction, QTreeWidget, QAbstractItemView, \
-    QTableWidget, QVBoxLayout, QMessageBox
-from pyqtgraph import TreeWidget
+from PyQt5.QtWidgets import QTreeWidgetItem, QTableWidgetItem, QMenu, QMessageBox
 
 
 class PassUI(QtWidgets.QMainWindow):
     def __init__(self, passpy_obj):
         super().__init__()
+        self.setWindowTitle("PassUI")
         self.passpy_obj = passpy_obj
         self.ui = uic.loadUi(os.path.join(os.path.dirname(__file__), "PassUI.ui"), self)
+        self.setWindowTitle("PassUI")
         self.edit_table = False
+        self.ui.PYPASS_GPG_BIN.setText(passpy_obj.PYPASS_GPG_BIN)
+        self.ui.PYPASS_GIT_BIN.setText(passpy_obj.PYPASS_GIT_BIN)
+        self.ui.GIT_DIR.setText(passpy_obj.git_folder_name)
         self.load_tree()
         self.events()
         self.show()
@@ -31,7 +44,6 @@ class PassUI(QtWidgets.QMainWindow):
         self.ui.treeWidget.itemClicked.connect(self.on_item_tree_clicked)
         self.ui.treeWidget.itemExpanded.connect(self.on_item_tree_extend)
         self.ui.treeWidget.itemCollapsed.connect(self.on_item_tree_extend)
-
         self.ui.treeWidget.setContextMenuPolicy(Qt.CustomContextMenu)
         self.ui.treeWidget.customContextMenuRequested.connect(self.context_menu_tree)
 
@@ -41,22 +53,16 @@ class PassUI(QtWidgets.QMainWindow):
 
     def context_menu_tree(self, position):
         item = self.treeWidget.itemAt(position)
-        if item.childCount() == 0:
-            self.context_menu_tree_file(item, position)
+        if item is None:
+            return self.context_menu_tree_all(self.treeWidget, position)
+        if os.path.isfile(self.get_abs_path(item)):
+            return self.context_menu_tree_file(item, position)
         else:
-            self.context_menu_tree_folder(item, position)
+            return self.context_menu_tree_folder(item, position)
 
-    def context_menu_tree_folder(self, item, position):
-        print("context_menu_tree_folder")
-
-    def context_menu_tree_file(self, item, position):
+    def add_context(self, actions_bind, item, position):
         menu = QMenu(self)
         actions = []
-        actions_bind = [
-            ["Remove", self.action_remove],
-            ["Copy to clipboard", self.action_copy_clipboard],
-            ["Dupplicate", self.action_dupplicate],
-        ]
         for action, func in actions_bind:
             actions.append(menu.addAction(action))
         action = menu.exec_(self.ui.treeWidget.viewport().mapToGlobal(position))
@@ -65,6 +71,47 @@ class PassUI(QtWidgets.QMainWindow):
                 actions_bind[i][1](item)
         else:
             print("Forgive")
+
+    def context_menu_tree_all(self, item, position):
+        self.add_context([
+            ["Export all to CSV", self.action_export_csv_all],
+            ["Change directory", self.action_change_directory],
+            ["GIT PULL", self.action_git_pull],
+            ["GIT PUSH", self.action_git_push],
+        ], item, position)
+
+
+    def action_export_csv_all(self, item):
+        pass
+
+    def action_git_pull(self, item):
+        pass
+
+    def action_git_push(self, item):
+        pass
+
+    def action_remove_folder(self, item):
+        pass
+
+    def action_export_csv(self, item):
+        pass
+
+    def action_change_directory(self, item):
+        pass
+
+    def context_menu_tree_folder(self, item, position):
+        self.add_context([
+            ["Remove Folder", self.action_remove_folder],
+            ["Add password", self.action_copy_clipboard],
+            ["Export to CSV", self.action_export_csv],
+        ], item, position)
+
+    def context_menu_tree_file(self, item, position):
+        self.add_context([
+            ["Remove", self.action_remove],
+            ["Copy to clipboard", self.action_copy_clipboard],
+            ["Dupplicate", self.action_dupplicate],
+        ], item, position)
 
     def action_remove(self, item):
         self.confirm(
@@ -148,13 +195,14 @@ class PassUI(QtWidgets.QMainWindow):
             item.addChild(child)
             if type(val) is dict:
                 self.fill_item(child, val)
+        self.resize_tree()
 
     @QtCore.pyqtSlot(QtWidgets.QTreeWidgetItem, int)
-    def on_item_tree_clicked(self, it, col):
-        key = it.text(0)
-        if not it.childCount():
+    def on_item_tree_clicked(self, item, col):
+        key = item.text(0)
+        if os.path.isfile(self.get_abs_path(item)):
             parents = [key]
-            current_it = it
+            current_it = item
             while True:
                 parent = current_it.parent()
                 if not isinstance(parent, QTreeWidgetItem):
@@ -197,7 +245,8 @@ class PassPy(passpy.store.Store):
         self.PYPASS_STORE_DIR = self.config['variables']['PYPASS_STORE_DIR']
         self.PYPASS_GIT_BIN = self.config['variables']['PYPASS_GIT_BIN']
         self.PYPASS_GPG_BIN = self.config['variables']['PYPASS_GPG_BIN']
-        self.GIT_DIR = os.path.join(self.PYPASS_STORE_DIR, self.config['settings']['git_folder_name'])
+        self.git_folder_name = self.config['settings']['git_folder_name']
+        self.GIT_DIR = os.path.join(self.PYPASS_STORE_DIR, self.git_folder_name)
         super().__init__(
             gpg_bin=self.PYPASS_GPG_BIN, 
             git_bin=self.PYPASS_GIT_BIN, 
