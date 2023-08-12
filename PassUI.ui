@@ -51,16 +51,6 @@
           </column>
           <column>
            <property name="text">
-            <string>Passwords</string>
-           </property>
-          </column>
-          <column>
-           <property name="text">
-            <string>Subfolders</string>
-           </property>
-          </column>
-          <column>
-           <property name="text">
             <string>Creation date</string>
            </property>
           </column>
