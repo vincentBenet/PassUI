@@ -1,36 +1,67 @@
-# TODO: Multiple field remove
+import os
+import types
+import shutil
+import pyperclip
+
+import PyQt5
+import PyQt5.uic
+import PyQt5.QtCore
+import PyQt5.QtWidgets
+from PyQt5 import Qt, QtGui
+from PyQt5.QtCore import Qt
+
+"""Top priority"""
 # TODO: Move password drag n drop
+
+"""TODO"""
 # TODO: git pull
 # TODO: git push
 # TODO: git init
 # TODO: passpy init
 # TODO: link git remote url
 
+"""Features"""
+# TODO: Import windows wifi passwords
+# TODO: Import windows chrome passwords
+# TODO: Import windows edges passwords
+# TODO: Import windows firefox passwords
 
-import shutil
-from PyQt5 import QtWidgets, uic, QtCore
-import os
-import sys
-import yaml
-import pyperclip
-from pathlib import Path
-import passpy
-import passpy_gpg
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QTreeWidgetItem, QTableWidgetItem, QMenu, QMessageBox
+# TODO: Import MAC chrome passwords
+# TODO: Import MAC safari passwords
+# TODO: Import MAC wifi passwords
 
 
-class PassUI(QtWidgets.QMainWindow):
+def get_rel_path(item):
+    parents = []
+    current = item
+    while True:
+        if current is None:
+            break
+        parent = current.parent()
+        if parent is None:
+            break
+        parents.append(parent)
+        current = parent
+    parents.reverse()
+    return os.sep.join([parent.text(0) for parent in parents])
+
+
+class PassUI(PyQt5.QtWidgets.QMainWindow):
     def __init__(self, passpy_obj):
         super().__init__()
+        self.clicked_item = None
+        self.clicked_key = None
         self.setWindowTitle("PassUI")
         self.passpy_obj = passpy_obj
-        self.ui = uic.loadUi(os.path.join(os.path.dirname(__file__), "PassUI.ui"), self)
+        self.ui = PyQt5.uic.loadUi(os.path.join(os.path.dirname(__file__), "data", "PassUI.ui"), self)
+        self.ui.treeWidget.dragMoveEvent = types.MethodType(PassUI.dragMoveEvent, self)
+        self.ui.treeWidget.dropEvent = types.MethodType(PassUI.dropEvent, self)
         self.setWindowTitle("PassUI")
         self.edit_table = False
         self.in_dupplicate = False
         self.ui.PYPASS_GPG_BIN.setText(passpy_obj.PYPASS_GPG_BIN)
         self.ui.PYPASS_GIT_BIN.setText(passpy_obj.PYPASS_GIT_BIN)
+        self.ui.PYPASS_STORE_DIR.setText(passpy_obj.PYPASS_STORE_DIR)
         self.ui.GIT_DIR.setText(passpy_obj.git_folder_name)
         self.load_tree()
         self.events()
@@ -39,23 +70,37 @@ class PassUI(QtWidgets.QMainWindow):
     def events(self):
         self.event_tree()
         self.event_table()
+        self.event_settings()
 
     def event_tree(self):
         self.ui.treeWidget.itemChanged.connect(self.on_item_tree_changed)
         self.ui.treeWidget.itemClicked.connect(self.on_item_tree_clicked)
         self.ui.treeWidget.itemExpanded.connect(self.on_item_tree_extend)
         self.ui.treeWidget.itemCollapsed.connect(self.on_item_tree_extend)
-        self.ui.treeWidget.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.ui.treeWidget.setContextMenuPolicy(PyQt5.QtCore.Qt.CustomContextMenu)
         self.ui.treeWidget.customContextMenuRequested.connect(self.context_menu_tree)
 
     def event_table(self):
         self.ui.tableWidget.cellChanged.connect(self.on_item_table_changed)
         self.ui.tableWidget.cellClicked.connect(self.on_item_table_clicked)
-        self.ui.tableWidget.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.ui.tableWidget.setContextMenuPolicy(PyQt5.QtCore.Qt.CustomContextMenu)
         self.ui.tableWidget.customContextMenuRequested.connect(self.context_menu_table)
 
-    @QtCore.pyqtSlot(QtWidgets.QTreeWidgetItem, int)
-    def on_item_tree_changed(self, item, col):
+    def event_settings(self):
+        self.ui.PYPASS_GPG_BIN.editingFinished.connect(self.edit_settings)
+        self.ui.PYPASS_GIT_BIN.editingFinished.connect(self.edit_settings)
+        self.ui.PYPASS_STORE_DIR.editingFinished.connect(self.edit_settings)
+        self.ui.GIT_DIR.editingFinished.connect(self.edit_settings)
+
+    def edit_settings(self):
+        self.passpy_obj.PYPASS_GPG_BIN = self.ui.PYPASS_GPG_BIN.text()
+        self.passpy_obj.PYPASS_GIT_BIN = self.ui.PYPASS_GIT_BIN.text()
+        self.passpy_obj.PYPASS_STORE_DIR = self.ui.PYPASS_STORE_DIR.text()
+        self.passpy_obj.git_folder_name = self.ui.GIT_DIR.text()
+        self.passpy_obj.overwrite_config()
+
+    @PyQt5.QtCore.pyqtSlot(PyQt5.QtWidgets.QTreeWidgetItem, int)
+    def on_item_tree_changed(self, item, _):
         if self.in_dupplicate:
             return
         path = self.get_abs_path(item)
@@ -70,10 +115,9 @@ class PassUI(QtWidgets.QMainWindow):
         item = self.ui.treeWidget.itemAt(position)
         if item is None:
             return self.add_context([
-                ["Export all to CSV", self.action_export_csv_all],
-                ["Change directory", self.action_change_directory],
-                ["GIT PULL", self.action_git_pull],
-                ["GIT PUSH", self.action_git_push],
+                # ["Export all to CSV", self.action_export_csv_all],
+                # ["GIT PULL", self.action_git_pull],
+                # ["GIT PUSH", self.action_git_push],
                 ["Add folder", self.action_add_folder_top],
             ], self.treeWidget, position)
         if os.path.isfile(self.get_abs_path(item)):
@@ -87,12 +131,12 @@ class PassUI(QtWidgets.QMainWindow):
                 ["Add folder", self.action_add_folder],
                 ["Delete", self.action_remove_folder],
                 ["Add password", self.action_copy_clipboard],
-                ["Export to CSV", self.action_export_csv],
+                # ["Export to CSV", self.action_export_csv],
             ], item, position)
 
     def context_menu_table(self, position):
         index = self.ui.tableWidget.indexAt(position)
-        menu = QMenu(self)
+        menu = PyQt5.QtWidgets.QMenu(self)
         actions = []
         if not index.isValid():
             return
@@ -107,7 +151,7 @@ class PassUI(QtWidgets.QMainWindow):
             if action == action_check:
                 actions_bind[i][1](index)
 
-    def action_remove_field(self, index):
+    def action_remove_field(self, _):
         rows = []
         items = self.ui.tableWidget.selectedItems()
         for item in items:
@@ -132,7 +176,7 @@ class PassUI(QtWidgets.QMainWindow):
 
     def remove_fields(self, rows):
         item = self.clicked_item
-        path = os.path.join(self.get_rel_path(item), item.text(0))
+        path = os.path.join(get_rel_path(item), item.text(0))
         infos = self.passpy_obj.get_infos(path)
         for row in rows:
             del infos[self.ui.tableWidget.item(row, 0).text()]
@@ -141,7 +185,7 @@ class PassUI(QtWidgets.QMainWindow):
 
     def remove_field(self, row):
         item = self.clicked_item
-        path = os.path.join(self.get_rel_path(item), item.text(0))
+        path = os.path.join(get_rel_path(item), item.text(0))
         infos = self.passpy_obj.get_infos(path)
         del infos[self.ui.tableWidget.item(row, 0).text()]
         self.ui.tableWidget.removeRow(row)
@@ -150,7 +194,7 @@ class PassUI(QtWidgets.QMainWindow):
     def action_add_field(self, index):
         row = index.row()
         item = self.clicked_item
-        path = os.path.join(self.get_rel_path(item), item.text(0))
+        path = os.path.join(get_rel_path(item), item.text(0))
         infos = self.passpy_obj.get_infos(path)
         res = {}
         for i, key in enumerate(infos):
@@ -162,13 +206,13 @@ class PassUI(QtWidgets.QMainWindow):
                     keyadd = f"field_{j}"
                 res[keyadd] = ""
                 self.ui.tableWidget.insertRow(row + 1)
-                self.ui.tableWidget.setItem(row + 1, 0, QTableWidgetItem(keyadd))
-                self.ui.tableWidget.setItem(row + 1, 1, QTableWidgetItem(res[keyadd]))
+                self.ui.tableWidget.setItem(row + 1, 0, PyQt5.QtWidgets.QTableWidgetItem(keyadd))
+                self.ui.tableWidget.setItem(row + 1, 1, PyQt5.QtWidgets.QTableWidgetItem(res[keyadd]))
             res[key] = infos[key]
         self.passpy_obj.write_key(path, res)
 
     def add_context(self, actions_bind, item, position):
-        menu = QMenu(self)
+        menu = PyQt5.QtWidgets.QMenu(self)
         actions = []
         for action, func in actions_bind:
             actions.append(menu.addAction(action))
@@ -187,7 +231,7 @@ class PassUI(QtWidgets.QMainWindow):
             key = f"new_folder_{i}"
             path = os.path.join(self.get_abs_path(item, folder=True), key)
         os.mkdir(path)
-        child = QTreeWidgetItem()
+        child = PyQt5.QtWidgets.QTreeWidgetItem()
         child.setText(0, key)
         parent = item.parent()
         if parent is None:
@@ -196,11 +240,11 @@ class PassUI(QtWidgets.QMainWindow):
         else:
             parent = item
         parent.addChild(child)
-        child.setFlags(child.flags() | Qt.ItemIsEditable)
+        child.setFlags(child.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
         self.resize_tree()
         self.in_dupplicate = False
 
-    def action_add_folder_top(self, item):
+    def action_add_folder_top(self, _):
         self.in_dupplicate = True
         key = "new_folder"
         path = os.path.join(self.passpy_obj.PYPASS_STORE_DIR, key)
@@ -210,24 +254,24 @@ class PassUI(QtWidgets.QMainWindow):
             key = f"new_folder_{i}"
             path = os.path.join(self.passpy_obj.PYPASS_STORE_DIR, key)
         os.mkdir(path)
-        child = QTreeWidgetItem()
+        child = PyQt5.QtWidgets.QTreeWidgetItem()
         child.setText(0, key)
         self.ui.treeWidget.invisibleRootItem().addChild(child)
-        child.setFlags(child.flags() | Qt.ItemIsEditable)
+        child.setFlags(child.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
         self.resize_tree()
         self.in_dupplicate = False
 
     def action_export_csv_all(self, item):
-        pass
+        raise NotImplementedError
 
     def action_git_pull(self, item):
-        pass
+        raise NotImplementedError
 
     def action_git_push(self, item):
-        pass
+        raise NotImplementedError
 
     def action_remove_folder(self, item):
-        path = self.get_rel_path(item)
+        path = get_rel_path(item)
         if not path:
             path = self.passpy_obj.PYPASS_STORE_DIR
         self.confirm(
@@ -237,7 +281,6 @@ class PassUI(QtWidgets.QMainWindow):
 
     def remove_folder(self, item):
         path_to_remove = self.get_abs_path(item, folder=True)
-        print(f"Remove folder {path_to_remove}")
         shutil.rmtree(path_to_remove)
         parent = item.parent()
         if parent is None:
@@ -247,20 +290,17 @@ class PassUI(QtWidgets.QMainWindow):
             parent.removeChild(item)
 
     def action_export_csv(self, item):
-        pass
-
-    def action_change_directory(self, item):
-        pass
+        raise NotImplementedError
 
     def action_remove(self, item):
         self.confirm(
             lambda: self.remove_password(item),
-            f"Delete file '{item.text(0)}.gpg' in '{self.get_rel_path(item)}'"
+            f"Delete file '{item.text(0)}.gpg' in '{get_rel_path(item)}'"
         )
 
     def action_copy_clipboard(self, item):
         pyperclip.copy("\n".join([f"{key}: {value}" for key, value in self.passpy_obj.get_infos(
-            os.path.join(self.get_rel_path(item), item.text(0))).items()]))
+            os.path.join(get_rel_path(item), item.text(0))).items()]))
 
     def action_dupplicate(self, item):
         path = self.get_abs_path(item)
@@ -280,18 +320,20 @@ class PassUI(QtWidgets.QMainWindow):
             if not (os.path.isdir(path_dest) or os.path.isfile(path_dest)):
                 break
             i += 1
-        print(f"Dupplicate {path} -> {path_dest}")
         shutil.copy(path, path_dest)
         self.in_dupplicate = True
-        child = QTreeWidgetItem([key], 0)
+        child = PyQt5.QtWidgets.QTreeWidgetItem([key], 0)
         item.parent().addChild(child)
         self.clicked_key = key
         self.resize_tree()
-        child.setFlags(child.flags() | Qt.ItemIsEditable)
+        child.setFlags(child.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
         self.in_dupplicate = False
 
     def confirm(self, func, txt):
-        if QMessageBox.question(self, '', txt + " ?", QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
+        if PyQt5.QtWidgets.QMessageBox.question(
+                self, '', txt + " ?",
+                PyQt5.QtWidgets.QMessageBox.Yes | PyQt5.QtWidgets.QMessageBox.No
+        ) == PyQt5.QtWidgets.QMessageBox.Yes:
             return func()
 
     def remove_password(self, item):
@@ -301,23 +343,14 @@ class PassUI(QtWidgets.QMainWindow):
         item.parent().removeChild(item)
 
     def get_abs_path(self, item, folder=False):
-
-        return os.path.join(self.passpy_obj.PYPASS_STORE_DIR, self.get_rel_path(item), item.text(0)) + (".gpg" * (not folder))
-
-    def get_rel_path(self, item):
-        parents = []
-        current = item
-        while True:
-            parent = current.parent()
-            if parent is None:
-                break
-            parents.append(parent)
-            current = parent
-        parents.reverse()
-        return os.sep.join([parent.text(0) for parent in parents])
+        if item is None and folder:
+            return self.passpy_obj.PYPASS_STORE_DIR
+        return os.path.join(self.passpy_obj.PYPASS_STORE_DIR, get_rel_path(item), item.text(0)) + (
+                ".gpg" * (not folder))
 
     def on_item_table_clicked(self, row, col):
-        pyperclip.copy(self.ui.tableWidget.item(row, 1).text())
+        if col == 0:
+            pyperclip.copy(self.ui.tableWidget.item(row, 1).text())
 
     def on_item_tree_extend(self):
         self.ui.tableWidget.setRowCount(0)
@@ -334,16 +367,16 @@ class PassUI(QtWidgets.QMainWindow):
 
     def fill_item(self, item, value):
         for key, val in sorted(value.items()):
-            child = QTreeWidgetItem()
+            child = PyQt5.QtWidgets.QTreeWidgetItem()
             child.setText(0, key)
             item.addChild(child)
             if type(val) is dict:
                 self.fill_item(child, val)
-            child.setFlags(child.flags() | Qt.ItemIsEditable)
+            child.setFlags(child.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
         self.resize_tree()
 
-    @QtCore.pyqtSlot(QtWidgets.QTreeWidgetItem, int)
-    def on_item_tree_clicked(self, item, col):
+    @PyQt5.QtCore.pyqtSlot(PyQt5.QtWidgets.QTreeWidgetItem, int)
+    def on_item_tree_clicked(self, item, _):
         key = item.text(0)
         self.clicked_item = item
         self.clicked_key = key
@@ -352,7 +385,7 @@ class PassUI(QtWidgets.QMainWindow):
             current_it = item
             while True:
                 parent = current_it.parent()
-                if not isinstance(parent, QTreeWidgetItem):
+                if not isinstance(parent, PyQt5.QtWidgets.QTreeWidgetItem):
                     break
                 parent_key = parent.text(0)
                 parents.append(parent_key)
@@ -361,9 +394,9 @@ class PassUI(QtWidgets.QMainWindow):
             infos = self.passpy_obj.get_infos(os.sep.join(parents))
             if "PASSWORD" in infos:
                 pyperclip.copy(infos["PASSWORD"])
-            self.fill_table(key, infos)
+            self.fill_table(infos)
 
-    def on_item_table_changed(self, row, col):
+    def on_item_table_changed(self):
         if self.edit_table:
             return
         res = {}
@@ -379,105 +412,67 @@ class PassUI(QtWidgets.QMainWindow):
                     key = '_'.join(split[:-1])
                 key = f"{key}_{i}"
             if i > 0:
-                self.ui.tableWidget.setItem(row, 0, QTableWidgetItem(key))
+                self.ui.tableWidget.setItem(row, 0, PyQt5.QtWidgets.QTableWidgetItem(key))
             res[key] = value
         item = self.clicked_item
-        path = os.path.join(self.get_rel_path(item), item.text(0))
+        path = os.path.join(get_rel_path(item), item.text(0))
         self.passpy_obj.write_key(path, res)
 
-    def fill_table(self, key, infos):
+    def fill_table(self, infos):
         self.edit_table = True
         self.ui.tableWidget.setRowCount(0)
         [self.ui.tableWidget.insertRow(0) for _ in range(len(infos))]
         for line, info_key in enumerate(infos):
             value = infos[info_key]
-            self.ui.tableWidget.setItem(line, 0, QTableWidgetItem(info_key))
-            self.ui.tableWidget.setItem(line, 1, QTableWidgetItem(value))
+            self.ui.tableWidget.setItem(line, 0, PyQt5.QtWidgets.QTableWidgetItem(info_key))
+            self.ui.tableWidget.setItem(line, 1, PyQt5.QtWidgets.QTableWidgetItem(value))
         self.edit_table = False
         header = self.ui.tableWidget.horizontalHeader()
-        header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+        header.setSectionResizeMode(PyQt5.QtWidgets.QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, PyQt5.QtWidgets.QHeaderView.Stretch)
 
+    def dragMoveEvent(self, event):
+        """
+        Validation during drap n drop action of possible drag action
+        :param self:
+        :param event:
+        :return:
+        """
+        position = event.pos()
+        item_at_position = self.ui.treeWidget.itemAt(position)
+        if item_at_position is None:
+            return event.accept()
+        current_item = self.ui.treeWidget.currentItem()
+        if current_item is None:
+            return event.ignore()
+        parent_current = current_item.parent()
+        path_dir_dest = self.get_abs_path(item_at_position, folder=True)
+        if item_at_position == parent_current:
+            return event.ignore()
+        elif os.path.isdir(path_dir_dest):
+            return event.accept()
+        else:
+            return event.ignore()
 
-class PassPy(passpy.store.Store):
-    def __init__(self):
-        self.config = yaml.safe_load(Path(os.path.join(os.path.dirname(__file__), "PassUI.yml")).read_text())
-        self.PYPASS_STORE_DIR = self.config['variables']['PYPASS_STORE_DIR']
-        self.PYPASS_GIT_BIN = self.config['variables']['PYPASS_GIT_BIN']
-        self.PYPASS_GPG_BIN = self.config['variables']['PYPASS_GPG_BIN']
-        self.git_folder_name = self.config['settings']['git_folder_name']
-        self.GIT_DIR = os.path.join(self.PYPASS_STORE_DIR, self.git_folder_name)
-        super().__init__(
-            gpg_bin=self.PYPASS_GPG_BIN, 
-            git_bin=self.PYPASS_GIT_BIN, 
-            store_dir=self.PYPASS_STORE_DIR, 
-            use_agent=True, 
-            interactive=False, 
-            verbose=True
-        )
-        
-    @property
-    def keys(self):
-        print(f"{self.GIT_DIR = }")
-        res = {}
-        for root, dirs, files in os.walk(self.PYPASS_STORE_DIR):
-            condition = root.startswith(os.path.abspath(self.GIT_DIR))
-            if condition:
-                continue
-            rel_path = root[len(self.PYPASS_STORE_DIR)+1:]
-            if not len(rel_path):
-                continue
-            dico = res
-            for key in rel_path.split(os.sep):
-                if key not in dico:
-                    dico[key] = {}
-                dico = dico[key]
-            for file in files:
-                if not file.endswith(".gpg"):
-                    continue
-                passkey = file[:-len(".gpg")]
-                key_rel_path = os.path.join(rel_path, passkey)
-                dico[passkey] = key_rel_path
-        print(f"{res = }")
-        return res
+    def dropEvent(self, event: QtGui.QDropEvent):
+        position = event.pos()
+        item_at_position = self.ui.treeWidget.itemAt(position)
+        abs_path_dir_dest = self.get_abs_path(item_at_position, folder=True)
+        actual_item = self.ui.treeWidget.currentItem()
+        actual_item_text = actual_item.text(0)
+        abs_path_dest = os.path.join(abs_path_dir_dest, actual_item_text + ".gpg")
+        abs_path_source = self.get_abs_path(actual_item, folder=False)
+        os.rename(abs_path_source, abs_path_dest)
+        parent_item = actual_item.parent()
 
-    def get_infos(self, key_rel_path):
-        dico = {}
-        infos = self.get_key(key_rel_path)
-        splits = infos.split("\n")
-        dico["PASSWORD"] = splits[0]
-        seps = [": ", ":", "| ", "|"]
-        for i, info in enumerate(splits[1:]):
-            if not len(info):
-                continue
-            for sep in seps:
-                if sep in info:
-                    split = info.split(sep)
-                    dico[split[0]] = sep.join(split[1:])
-                    break
-            else:
-                print(f"ERROR ON {key_rel_path}: No separator for line {i}: {info}")
-        return dico
+        if parent_item is not None:
+            parent_item.removeChild(actual_item)
+        else:
+            self.ui.treeWidget.takeTopLevelItem(self.ui.treeWidget.indexOfTopLevelItem(actual_item))
 
-    def write_key(self, path, infos):
-        key_data = ""
-        if "PASSWORD" in infos:
-            key_data += infos["PASSWORD"] + "\n"
-        for key, value in infos.items():
-            if key == "PASSWORD":
-                continue
-            key_data += f"{key}: {value}\n"
-        print(key_data)
-        passpy_gpg.write_key(
-            os.path.join(self.PYPASS_STORE_DIR, path + ".gpg"),
-            key_data,
-            self.PYPASS_GPG_BIN,
-            os.path.join(self.PYPASS_STORE_DIR, '.gpg-id')
-        )
+        if item_at_position is None:
+            item_at_position = self.ui.treeWidget.invisibleRootItem()
 
-
-if __name__ == "__main__":
-    Passpy_obj = PassPy()
-    app = QtWidgets.QApplication(sys.argv)  # Create an instance of QtWidgets.QApplication
-    window = PassUI(Passpy_obj)  # Create an instance of our class
-    app.exec_()  # Start the application
+        item_at_position.addChild(actual_item)
+        event.setDropAction(Qt.IgnoreAction)
+        event.accept()
