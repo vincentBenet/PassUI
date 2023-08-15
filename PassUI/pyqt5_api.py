@@ -1,7 +1,11 @@
 import os
+import sys
 import types
 import shutil
+import webbrowser
+
 import pyperclip
+import validators
 
 import PyQt5
 import PyQt5.uic
@@ -11,7 +15,7 @@ from PyQt5 import Qt, QtGui
 from PyQt5.QtCore import Qt
 
 """Top priority"""
-# TODO: Move password drag n drop
+# TODO: Init pass directory
 
 """TODO"""
 # TODO: git pull
@@ -63,6 +67,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         self.ui.PYPASS_GIT_BIN.setText(passpy_obj.PYPASS_GIT_BIN)
         self.ui.PYPASS_STORE_DIR.setText(passpy_obj.PYPASS_STORE_DIR)
         self.ui.GIT_DIR.setText(passpy_obj.git_folder_name)
+        self.ui.WEBBROWER_PATH.setText(passpy_obj.WEBBROWER_PATH)
         self.load_tree()
         self.events()
         self.show()
@@ -91,19 +96,25 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         self.ui.PYPASS_GIT_BIN.editingFinished.connect(self.edit_settings)
         self.ui.PYPASS_STORE_DIR.editingFinished.connect(self.edit_settings)
         self.ui.GIT_DIR.editingFinished.connect(self.edit_settings)
+        self.ui.WEBBROWER_PATH.editingFinished.connect(self.edit_settings)
 
     def edit_settings(self):
         self.passpy_obj.PYPASS_GPG_BIN = self.ui.PYPASS_GPG_BIN.text()
         self.passpy_obj.PYPASS_GIT_BIN = self.ui.PYPASS_GIT_BIN.text()
         self.passpy_obj.PYPASS_STORE_DIR = self.ui.PYPASS_STORE_DIR.text()
         self.passpy_obj.git_folder_name = self.ui.GIT_DIR.text()
-        self.passpy_obj.overwrite_config()
+        self.passpy_obj.WEBBROWER_PATH = self.ui.WEBBROWER_PATH.text()
+        if self.passpy_obj.overwrite_config():
+            PyQt5.QtCore.QCoreApplication.quit()
+            PyQt5.QtCore.QProcess.startDetached(sys.executable, sys.argv)
 
     @PyQt5.QtCore.pyqtSlot(PyQt5.QtWidgets.QTreeWidgetItem, int)
     def on_item_tree_changed(self, item, _):
         if self.in_dupplicate:
             return
         path = self.get_abs_path(item)
+        if self.clicked_key is None:
+            return
         initial_path = os.path.join(os.sep.join(path.split(os.sep)[:-1]), self.clicked_key + ".gpg")
         if not os.path.isfile(initial_path):
             path = self.get_abs_path(item, folder=True)
@@ -338,7 +349,6 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
 
     def remove_password(self, item):
         path_to_remove = self.get_abs_path(item)
-        print(f"Remove password {path_to_remove}")
         os.remove(path_to_remove)
         item.parent().removeChild(item)
 
@@ -349,8 +359,18 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
                 ".gpg" * (not folder))
 
     def on_item_table_clicked(self, row, col):
+        value = self.ui.tableWidget.item(row, 1).text()
         if col == 0:
-            pyperclip.copy(self.ui.tableWidget.item(row, 1).text())
+            pyperclip.copy(value)
+        elif col == 1:
+            info_key = self.ui.tableWidget.item(row, 0).text()
+            if info_key == "url" and validators.url(value):
+                try:
+                    webbrowser_user = webbrowser.get(self.passpy_obj.WEBBROWER_PATH)
+                except webbrowser.Error:
+                    print(f"Fail to open with {self.passpy_obj.WEBBROWER_PATH}")
+                    webbrowser_user = webbrowser.get(None)
+                webbrowser_user.open(value)
 
     def on_item_tree_extend(self):
         self.ui.tableWidget.setRowCount(0)
@@ -455,6 +475,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             return event.ignore()
 
     def dropEvent(self, event: QtGui.QDropEvent):
+        self.in_dupplicate = True
         position = event.pos()
         item_at_position = self.ui.treeWidget.itemAt(position)
         abs_path_dir_dest = self.get_abs_path(item_at_position, folder=True)
@@ -462,7 +483,19 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         actual_item_text = actual_item.text(0)
         abs_path_dest = os.path.join(abs_path_dir_dest, actual_item_text + ".gpg")
         abs_path_source = self.get_abs_path(actual_item, folder=False)
+
+        i = 0
+        while os.path.isfile(abs_path_dest):
+            i += 1
+            split = abs_path_dest.split("_")
+            key = f"_{i}.gpg"
+            if len(split) == 1:
+                abs_path_dest = abs_path_dest[:-len(".gpg")] + key
+                continue
+            abs_path_dest = "_".join(split[:-1]) + key
         os.rename(abs_path_source, abs_path_dest)
+        if i > 0:
+            actual_item.setText(0, os.path.basename(abs_path_dest)[:-len(".gpg")])
         parent_item = actual_item.parent()
 
         if parent_item is not None:
@@ -476,3 +509,4 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         item_at_position.addChild(actual_item)
         event.setDropAction(Qt.IgnoreAction)
         event.accept()
+        self.in_dupplicate = False

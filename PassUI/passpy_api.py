@@ -16,10 +16,16 @@ def get_config_path():
 
 def load_config():
     path_config = get_config_path()
-    if not os.path.isfile(path_config):
-        path_config = os.path.abspath(os.path.join(os.path.dirname(__file__), "data", "PassUI.yml"))
-    print(f"Reading config file at {path_config}")
-    return yaml.safe_load(Path(path_config).read_text())
+    if os.path.isfile(path_config):
+        user_config = yaml.safe_load(Path(path_config).read_text())
+    else:
+        user_config = {}
+    app_config = yaml.safe_load(
+        Path(os.path.abspath(os.path.join(os.path.dirname(__file__), "data", "PassUI.yml"))).read_text())
+    config = app_config | user_config
+    for key in config:
+        config[key] = app_config[key] | user_config[key]
+    return config
 
 
 class PassPy(passpy.store.Store):
@@ -29,6 +35,7 @@ class PassPy(passpy.store.Store):
         self.PYPASS_GIT_BIN = self.config['variables']['PYPASS_GIT_BIN']
         self.PYPASS_GPG_BIN = self.config['variables']['PYPASS_GPG_BIN']
         self.git_folder_name = self.config['settings']['git_folder_name']
+        self.WEBBROWER_PATH = self.config['settings']['WEBBROWER_PATH']
         self.GIT_DIR = os.path.join(self.PYPASS_STORE_DIR, self.git_folder_name)
         self.platform = sys.platform
         self.check_paths()
@@ -46,7 +53,8 @@ class PassPy(passpy.store.Store):
         path = get_config_path()
         config = self.config | {
             "settings": {
-                "git_folder_name": self.git_folder_name
+                "git_folder_name": self.git_folder_name,
+                "WEBBROWER_PATH": self.WEBBROWER_PATH,
             },
             "variables": {
                 "PYPASS_GIT_BIN": self.PYPASS_GIT_BIN,
@@ -55,9 +63,11 @@ class PassPy(passpy.store.Store):
             },
         }
         if config != self.config:
-            print(f"Writing user config-file to {path}\n{config}")
             with open(path, 'w') as outfile:
                 yaml.dump(config, outfile, default_flow_style=False)
+            return True
+        else:
+            return False
 
     def check_paths(self):
         self.check_path_store()
@@ -138,9 +148,7 @@ class PassPy(passpy.store.Store):
         for root, dirs, files in os.walk(self.PYPASS_STORE_DIR):
             if root.startswith(os.path.abspath(self.GIT_DIR)):
                 continue
-            print(files)
             rel_path = root[len(self.PYPASS_STORE_DIR)+1:]
-            print(rel_path)
             if not len(rel_path):
                 for file in files:
                     if not file.endswith(".gpg"):
@@ -159,7 +167,6 @@ class PassPy(passpy.store.Store):
                 passkey = file[:-len(".gpg")]
                 key_rel_path = os.path.join(rel_path, passkey)
                 dico[passkey] = key_rel_path
-        print(res)
         return res
 
     def get_infos(self, key_rel_path):
@@ -176,8 +183,6 @@ class PassPy(passpy.store.Store):
                     split = info.split(sep)
                     dico[split[0]] = sep.join(split[1:])
                     break
-            else:
-                print(f"ERROR ON {key_rel_path}: No separator for line {i}: {info}")
         return dico
 
     def write_key(self, rel_path, infos):

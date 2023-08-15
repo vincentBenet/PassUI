@@ -5,3 +5,4 @@ variables:
 
 settings:
     git_folder_name: .git
+    WEBBROWER_PATH: C:/Program Files/Google/Chrome/Application/chrome.exe %s
