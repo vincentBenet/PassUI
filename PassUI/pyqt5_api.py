@@ -14,6 +14,8 @@ import PyQt5.QtWidgets
 from PyQt5 import Qt, QtGui
 from PyQt5.QtCore import Qt
 
+from PassUI import utils
+
 """Top priority"""
 # TODO: Init pass directory
 
@@ -65,8 +67,9 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         self.in_dupplicate = False
         self.ui.PYPASS_GPG_BIN.setText(passpy_obj.PYPASS_GPG_BIN)
         self.ui.PYPASS_GIT_BIN.setText(passpy_obj.PYPASS_GIT_BIN)
+        self.ui.KEY_ID.setText(passpy_obj.KEY_ID)
         self.ui.PYPASS_STORE_DIR.setText(passpy_obj.PYPASS_STORE_DIR)
-        self.ui.GIT_DIR.setText(passpy_obj.git_folder_name)
+        self.ui.GIT_DIR.setText(passpy_obj.GIT_DIR)
         self.ui.WEBBROWER_PATH.setText(passpy_obj.WEBBROWER_PATH)
         self.load_tree()
         self.events()
@@ -92,21 +95,23 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         self.ui.tableWidget.customContextMenuRequested.connect(self.context_menu_table)
 
     def event_settings(self):
-        self.ui.PYPASS_GPG_BIN.editingFinished.connect(self.edit_settings)
-        self.ui.PYPASS_GIT_BIN.editingFinished.connect(self.edit_settings)
-        self.ui.PYPASS_STORE_DIR.editingFinished.connect(self.edit_settings)
-        self.ui.GIT_DIR.editingFinished.connect(self.edit_settings)
-        self.ui.WEBBROWER_PATH.editingFinished.connect(self.edit_settings)
+        self.ui.PYPASS_GPG_BIN.editingFinished.connect(lambda: self.edit_settings("PYPASS_GPG_BIN", "variables"))
+        self.ui.PYPASS_GIT_BIN.editingFinished.connect(lambda: self.edit_settings("PYPASS_GIT_BIN", "variables"))
+        self.ui.KEY_ID.editingFinished.connect(lambda: self.edit_settings("KEY_ID", "variables"))
+        self.ui.PYPASS_STORE_DIR.editingFinished.connect(lambda: self.edit_settings("PYPASS_STORE_DIR", "variables"))
+        self.ui.GIT_DIR.editingFinished.connect(lambda: self.edit_settings("GIT_DIR", "settings"))
+        self.ui.WEBBROWER_PATH.editingFinished.connect(lambda: self.edit_settings("WEBBROWER_PATH", "settings"))
 
-    def edit_settings(self):
-        self.passpy_obj.PYPASS_GPG_BIN = self.ui.PYPASS_GPG_BIN.text()
-        self.passpy_obj.PYPASS_GIT_BIN = self.ui.PYPASS_GIT_BIN.text()
-        self.passpy_obj.PYPASS_STORE_DIR = self.ui.PYPASS_STORE_DIR.text()
-        self.passpy_obj.git_folder_name = self.ui.GIT_DIR.text()
-        self.passpy_obj.WEBBROWER_PATH = self.ui.WEBBROWER_PATH.text()
-        if self.passpy_obj.overwrite_config():
-            PyQt5.QtCore.QCoreApplication.quit()
-            PyQt5.QtCore.QProcess.startDetached(sys.executable, sys.argv)
+    def edit_settings(self, var, key1):
+        new_value = getattr(self.ui, var).text()
+        old_value = getattr(self.passpy_obj, var)
+        if old_value == new_value:
+            return
+        setattr(self.passpy_obj, var, new_value)
+        self.passpy_obj.config[key1][var] = new_value
+        utils.overwrite_config(self.passpy_obj.config)
+        PyQt5.QtCore.QCoreApplication.quit()
+        PyQt5.QtCore.QProcess.startDetached(sys.executable, sys.argv)
 
     @PyQt5.QtCore.pyqtSlot(PyQt5.QtWidgets.QTreeWidgetItem, int)
     def on_item_tree_changed(self, item, _):
@@ -130,6 +135,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
                 # ["GIT PULL", self.action_git_pull],
                 # ["GIT PUSH", self.action_git_push],
                 ["Add folder", self.action_add_folder_top],
+                ["Add password", self.action_add_password_top],
             ], self.treeWidget, position)
         if os.path.isfile(self.get_abs_path(item)):
             return self.add_context([
@@ -141,9 +147,42 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             return self.add_context([
                 ["Add folder", self.action_add_folder],
                 ["Delete", self.action_remove_folder],
-                ["Add password", self.action_copy_clipboard],
+                ["Add password", self.action_add_password],
                 # ["Export to CSV", self.action_export_csv],
             ], item, position)
+
+    def action_add_password_top(self, _):
+        _, key = utils.new_incr(self.passpy_obj.PYPASS_STORE_DIR, "password", ".gpg")
+        child = PyQt5.QtWidgets.QTreeWidgetItem()
+        child.setText(0, key)
+        self.ui.treeWidget.invisibleRootItem().addChild(child)
+        self.add_password_file(key)
+
+    def action_add_password(self, item):
+        self.in_dupplicate = True
+        path, key = utils.new_incr(self.get_abs_path(item, folder=True), "password", ".gpg")
+        child = PyQt5.QtWidgets.QTreeWidgetItem()
+        child.setText(0, key)
+        parent = item
+        parent.addChild(child)
+        child.setFlags(child.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
+        self.resize_tree()
+        path_rel = utils.abs_to_rel(self.passpy_obj.PYPASS_STORE_DIR, path)
+        print(f"{path = }")
+        print(f"{path_rel = }")
+        self.add_password_file(path_rel)
+        self.in_dupplicate = False
+
+    def add_password_file(self, rel_path):
+        self.passpy_obj.write_key(
+            rel_path,
+            {
+                "PASSWORD": "",
+                "url": "",
+                "user": "",
+                "mail": "",
+            }
+        )
 
     def context_menu_table(self, position):
         index = self.ui.tableWidget.indexAt(position)
@@ -188,7 +227,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
     def remove_fields(self, rows):
         item = self.clicked_item
         path = os.path.join(get_rel_path(item), item.text(0))
-        infos = self.passpy_obj.get_infos(path)
+        infos = self.passpy_obj.read_key(path)
         for row in rows:
             del infos[self.ui.tableWidget.item(row, 0).text()]
             self.ui.tableWidget.removeRow(row)
@@ -197,16 +236,17 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
     def remove_field(self, row):
         item = self.clicked_item
         path = os.path.join(get_rel_path(item), item.text(0))
-        infos = self.passpy_obj.get_infos(path)
+        infos = self.passpy_obj.read_key(path)
         del infos[self.ui.tableWidget.item(row, 0).text()]
         self.ui.tableWidget.removeRow(row)
         self.passpy_obj.write_key(path, infos)
 
     def action_add_field(self, index):
+        self.edit_table = True
         row = index.row()
         item = self.clicked_item
         path = os.path.join(get_rel_path(item), item.text(0))
-        infos = self.passpy_obj.get_infos(path)
+        infos = self.passpy_obj.read_key(path)
         res = {}
         for i, key in enumerate(infos):
             if i == row:
@@ -221,6 +261,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
                 self.ui.tableWidget.setItem(row + 1, 1, PyQt5.QtWidgets.QTableWidgetItem(res[keyadd]))
             res[key] = infos[key]
         self.passpy_obj.write_key(path, res)
+        self.edit_table = False
 
     def add_context(self, actions_bind, item, position):
         menu = PyQt5.QtWidgets.QMenu(self)
@@ -234,13 +275,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
 
     def action_add_folder(self, item):
         self.in_dupplicate = True
-        key = "new_folder"
-        path = os.path.join(self.get_abs_path(item, folder=True), key)
-        i = 0
-        while os.path.isdir(path):
-            i += 1
-            key = f"new_folder_{i}"
-            path = os.path.join(self.get_abs_path(item, folder=True), key)
+        path, key = utils.new_incr(self.get_abs_path(item, folder=True), "folder")
         os.mkdir(path)
         child = PyQt5.QtWidgets.QTreeWidgetItem()
         child.setText(0, key)
@@ -257,13 +292,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
 
     def action_add_folder_top(self, _):
         self.in_dupplicate = True
-        key = "new_folder"
-        path = os.path.join(self.passpy_obj.PYPASS_STORE_DIR, key)
-        i = 0
-        while os.path.isdir(path):
-            i += 1
-            key = f"new_folder_{i}"
-            path = os.path.join(self.passpy_obj.PYPASS_STORE_DIR, key)
+        path, key = utils.new_incr(self.passpy_obj.PYPASS_STORE_DIR, "folder")
         os.mkdir(path)
         child = PyQt5.QtWidgets.QTreeWidgetItem()
         child.setText(0, key)
@@ -310,7 +339,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         )
 
     def action_copy_clipboard(self, item):
-        pyperclip.copy("\n".join([f"{key}: {value}" for key, value in self.passpy_obj.get_infos(
+        pyperclip.copy("\n".join([f"{key}: {value}" for key, value in self.passpy_obj.read_key(
             os.path.join(get_rel_path(item), item.text(0))).items()]))
 
     def action_dupplicate(self, item):
@@ -350,7 +379,11 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
     def remove_password(self, item):
         path_to_remove = self.get_abs_path(item)
         os.remove(path_to_remove)
-        item.parent().removeChild(item)
+        parent = item.parent()
+        if parent is not None:
+            parent.removeChild(item)
+        else:
+            self.ui.treeWidget.takeTopLevelItem(self.ui.treeWidget.indexOfTopLevelItem(item))
 
     def get_abs_path(self, item, folder=False):
         if item is None and folder:
@@ -383,7 +416,11 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
 
     def load_tree(self):
         self.ui.treeWidget.clear()
-        self.fill_item(self.ui.treeWidget.invisibleRootItem(), self.passpy_obj.keys)
+        rel_paths_gpg = self.passpy_obj.rel_paths_gpg
+        self.fill_item(
+            self.ui.treeWidget.invisibleRootItem(),
+            rel_paths_gpg
+        )
 
     def fill_item(self, item, value):
         for key, val in sorted(value.items()):
@@ -411,7 +448,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
                 parents.append(parent_key)
                 current_it = parent
             parents.reverse()
-            infos = self.passpy_obj.get_infos(os.sep.join(parents))
+            infos = self.passpy_obj.read_key(os.sep.join(parents))
             if "PASSWORD" in infos:
                 pyperclip.copy(infos["PASSWORD"])
             self.fill_table(infos)

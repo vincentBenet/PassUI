@@ -1,2 +1,2 @@
-from .passpy_api import PassPy
-from .pyqt5_api import PassUI
+from . import passpy_api
+from . import pyqt5_api

@@ -1,0 +1,3 @@
+[submodule "passpy"]
+	path = passpy
+	url = https://github.com/bfrascher/passpy

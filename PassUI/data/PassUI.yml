@@ -2,7 +2,8 @@ variables:
     PYPASS_GPG_BIN: gpg2
     PYPASS_GIT_BIN: git
     PYPASS_STORE_DIR: D:\Synology\GDriveGadz\PASS
+    KEY_ID: USERGPGKEY
 
 settings:
-    git_folder_name: .git
+    GIT_DIR: .git
     WEBBROWER_PATH: C:/Program Files/Google/Chrome/Application/chrome.exe %s
