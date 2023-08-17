@@ -23,6 +23,7 @@ def read_gpg(path_abs_gpg, path_bin_gpg):
     print(f"\tOUTPUT: {data_str = }")
     return data_str
 
+
 def get_config_path():
     return Path.home() / "passui.yml"
 
@@ -130,4 +131,3 @@ def new_incr(path_abs_dir, name, extension=""):
     if len(extension):
         key = key[:-len(extension)]
     return path, key
-

@@ -16,8 +16,6 @@ from PyQt5.QtCore import Qt
 
 from PassUI import utils
 
-"""Top priority"""
-# TODO: Init pass directory
 
 """TODO"""
 # TODO: git pull
