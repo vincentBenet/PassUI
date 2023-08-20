@@ -395,13 +395,14 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             pyperclip.copy(value)
         elif col == 1:
             info_key = self.ui.tableWidget.item(row, 0).text()
+
             if info_key == "url" and validators.url(value):
                 try:
                     webbrowser_user = webbrowser.get(self.passpy_obj.WEBBROWER_PATH)
+                    webbrowser_user.open(value, new=1, autoraise=True)
                 except webbrowser.Error:
                     print(f"Fail to open with {self.passpy_obj.WEBBROWER_PATH}")
-                    webbrowser_user = webbrowser.get(None)
-                webbrowser_user.open(value)
+                    webbrowser.open(value, new=1, autoraise=True)
 
     def on_item_tree_extend(self):
         self.ui.tableWidget.setRowCount(0)
