@@ -11,11 +11,10 @@ import PyQt5
 import PyQt5.uic
 import PyQt5.QtCore
 import PyQt5.QtWidgets
-from PyQt5 import Qt, QtGui
+from PyQt5 import Qt, QtGui, QtCore
 from PyQt5.QtCore import Qt
 
-from PassUI import utils
-
+from PassUI import utils, wifi_extract
 
 """TODO"""
 # TODO: git pull
@@ -77,6 +76,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         self.event_tree()
         self.event_table()
         self.event_settings()
+        self.event_wifi()
 
     def event_tree(self):
         self.ui.treeWidget.itemChanged.connect(self.on_item_tree_changed)
@@ -99,6 +99,32 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         self.ui.PYPASS_STORE_DIR.editingFinished.connect(lambda: self.edit_settings("PYPASS_STORE_DIR", "variables"))
         self.ui.GIT_DIR.editingFinished.connect(lambda: self.edit_settings("GIT_DIR", "settings"))
         self.ui.WEBBROWER_PATH.editingFinished.connect(lambda: self.edit_settings("WEBBROWER_PATH", "settings"))
+
+    def event_wifi(self):
+        self.ui.wifi_run_import.clicked.connect(self.wifi_run_import_main)
+        self.ui.wifi_output_dir.editingFinished.connect(lambda: self.edit_settings("wifi_output_dir", "wifi"))
+        self.ui.wifi_ssid_command.editingFinished.connect(lambda: self.edit_settings("wifi_ssid_command", "wifi"))
+        self.ui.wifi_ssid_regex_before.editingFinished.connect(lambda: self.edit_settings("wifi_ssid_regex_before", "wifi"))
+        self.ui.wifi_ssid_regex_after.editingFinished.connect(lambda: self.edit_settings("wifi_ssid_regex_after", "wifi"))
+        self.ui.wifi_password_command.editingFinished.connect(lambda: self.edit_settings("wifi_password_command", "wifi"))
+        self.ui.wifi_password_regex_before.editingFinished.connect(lambda: self.edit_settings("wifi_password_regex_before", "wifi"))
+        self.ui.wifi_password_regex_after.editingFinished.connect(lambda: self.edit_settings("wifi_password_regex_after", "wifi"))
+
+    def wifi_run_import_main(self):
+        with Logger(self.ui.wifi_output_prompt):
+            wifi_passwords = wifi_extract.main(
+                regex_ssid_before=self.ui.wifi_ssid_regex_before.text(),
+                regex_ssid_after=self.ui.wifi_ssid_regex_after.text(),
+                regex_pass_before=self.ui.wifi_password_regex_before.text(),
+                regex_pass_after=self.ui.wifi_password_regex_after.text(),
+                command_ssid=self.ui.wifi_ssid_command.text(),
+                command_pass=self.ui.wifi_password_command.text(),
+            )
+        path_rel_directory_output = self.ui.wifi_output_dir.text()
+        [self.passpy_obj.write_key(
+            os.path.join(path_rel_directory_output, ssid),
+            {"PASSWORD": password, "SSID": ssid}
+        ) for ssid, password in wifi_passwords.items()]
 
     def edit_settings(self, var, key1):
         new_value = getattr(self.ui, var).text()
@@ -546,3 +572,22 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         event.setDropAction(Qt.IgnoreAction)
         event.accept()
         self.in_dupplicate = False
+
+
+class Logger:
+    def __init__(self, ui: PyQt5.QtWidgets.QTextEdit):
+        self.txt = ""
+        self.ui = ui
+
+    def __enter__(self):
+        self.init = sys.stdout
+        sys.stdout = self
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.ui.setText(self.txt)
+        self.ui.moveCursor(QtGui.QTextCursor.End)
+        sys.stdout = self.init
+
+    def write(self, message):
+        self.txt += message
