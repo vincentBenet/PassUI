@@ -1,4 +1,5 @@
 import os
+import socket
 import sys
 import types
 import shutil
@@ -62,15 +63,20 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         self.setWindowTitle("PassUI")
         self.edit_table = False
         self.in_dupplicate = False
-        self.ui.PYPASS_GPG_BIN.setText(passpy_obj.PYPASS_GPG_BIN)
-        self.ui.PYPASS_GIT_BIN.setText(passpy_obj.PYPASS_GIT_BIN)
-        self.ui.KEY_ID.setText(passpy_obj.KEY_ID)
-        self.ui.PYPASS_STORE_DIR.setText(passpy_obj.PYPASS_STORE_DIR)
-        self.ui.GIT_DIR.setText(passpy_obj.GIT_DIR)
-        self.ui.WEBBROWER_PATH.setText(passpy_obj.WEBBROWER_PATH)
         self.load_tree()
+        self.set_settings()
         self.events()
         self.show()
+
+    def set_settings(self):
+        self.ui.PYPASS_GPG_BIN.setText(self.passpy_obj.PYPASS_GPG_BIN)
+        self.ui.PYPASS_GIT_BIN.setText(self.passpy_obj.PYPASS_GIT_BIN)
+        self.ui.KEY_ID.setText(self.passpy_obj.KEY_ID)
+        self.ui.PYPASS_STORE_DIR.setText(self.passpy_obj.PYPASS_STORE_DIR)
+        self.ui.GIT_DIR.setText(self.passpy_obj.GIT_DIR)
+        self.ui.WEBBROWER_PATH.setText(self.passpy_obj.WEBBROWER_PATH)
+
+        self.ui.wifi_output_dir.setText(self.passpy_obj.wifi_output_dir)
 
     def events(self):
         self.event_tree()
@@ -121,9 +127,10 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
                 command_pass=self.ui.wifi_password_command.text(),
             )
         path_rel_directory_output = self.ui.wifi_output_dir.text()
+
         [self.passpy_obj.write_key(
             os.path.join(path_rel_directory_output, ssid),
-            {"PASSWORD": password, "SSID": ssid}
+            {"PASSWORD": password, "SSID": ssid, "COMPUTER": socket.gethostname(), "description": ""}
         ) for ssid, password in wifi_passwords.items()]
 
     def edit_settings(self, var, key1):
@@ -132,6 +139,8 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         if old_value == new_value:
             return
         setattr(self.passpy_obj, var, new_value)
+        if key1 not in self.passpy_obj.config:
+            self.passpy_obj.config[key1] = {}
         self.passpy_obj.config[key1][var] = new_value
         utils.overwrite_config(self.passpy_obj.config)
         PyQt5.QtCore.QCoreApplication.quit()

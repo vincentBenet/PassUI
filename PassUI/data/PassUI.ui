@@ -18,7 +18,7 @@
     <item row="0" column="0">
      <widget class="QTabWidget" name="tabWidget">
       <property name="currentIndex">
-       <number>2</number>
+       <number>0</number>
       </property>
       <widget class="QWidget" name="tab">
        <attribute name="title">
@@ -280,28 +280,28 @@
         <item row="2" column="1">
          <widget class="QLineEdit" name="wifi_ssid_regex_before">
           <property name="text">
-           <string>Profil Tous les utilisateurs    : </string>
+           <string>    Profil Tous les utilisateurs    \xa0: </string>
           </property>
          </widget>
         </item>
         <item row="5" column="1">
          <widget class="QLineEdit" name="wifi_password_regex_before">
           <property name="text">
-           <string>Contenu de la cl            : </string>
+           <string>    Contenu de la clé            : </string>
           </property>
          </widget>
         </item>
         <item row="2" column="3">
          <widget class="QLineEdit" name="wifi_ssid_regex_after">
           <property name="text">
-           <string>\r\n</string>
+           <string>\n</string>
           </property>
          </widget>
         </item>
         <item row="5" column="3">
          <widget class="QLineEdit" name="wifi_password_regex_after">
           <property name="text">
-           <string>\r\n</string>
+           <string>\n</string>
           </property>
          </widget>
         </item>

@@ -10,6 +10,8 @@ def write_gpg(path_abs_gpg, data_str, path_bin_gpg, gpg_keys_list):
     print(f"\t{data_str = }")
     print(f"\t{path_bin_gpg = }")
     print(f"\t{gpg_keys_list = }")
+    path_abs_dir = os.path.dirname(path_abs_gpg)
+    os.makedirs(path_abs_dir, exist_ok=True)
     with open(path_abs_gpg, 'wb') as f:
         f.write(gnupg.GPG(gpgbinary=path_bin_gpg).encrypt(data_str, gpg_keys_list).data)
 

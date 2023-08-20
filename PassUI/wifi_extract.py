@@ -3,10 +3,9 @@ import subprocess
 
 
 def run(command):
-    # print("run")
-    # print(f"\t{command_list = }")
-    output = subprocess.check_output(command, shell=True).decode("utf-8", "ignore")
-    # print(f"\t{output = }")
+    output = subprocess.check_output(
+        command,
+        shell=True, encoding="437",)
     return output
 
 
@@ -27,6 +26,7 @@ def get_wifis_ssid(regex_ssid_before, regex_ssid_after, command_ssid):
     wifi_names = re.findall(regex, output)
     if not wifi_names:
         print(f"Error extracting wifis ssid: \n\tOUTPUT = {repr(output)}\n\tREGEX = {repr(regex)}")
+    print(f"\t{wifi_names = }")
     return wifi_names
 
 
@@ -41,6 +41,7 @@ def main(
     res = {}
     wifi_names = get_wifis_ssid(regex_ssid_before, regex_ssid_after, command_ssid)
     for wifi_name in wifi_names:
+
         wifi_pass = extract_wifi_pass(wifi_name, regex_pass_before, regex_pass_after, command_pass)
         if len(wifi_pass):
             res[wifi_name] = wifi_pass
@@ -50,10 +51,10 @@ def main(
 
 if __name__ == "__main__":
     print(main(
-        "Profil Tous les utilisateurs    : ",
-        "\r\n",
-        "Contenu de la cl            : ",
-        "\r\n",
+        "    Profil Tous les utilisateurs    \xa0: ",
+        "\n",
+        "    Contenu de la clé            : ",
+        "\n",
         "netsh wlan show profiles",
         'netsh wlan show profile "%s" key=clear',
     ))
