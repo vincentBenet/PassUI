@@ -129,7 +129,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         path_rel_directory_output = self.ui.wifi_output_dir.text()
 
         [self.passpy_obj.write_key(
-            os.path.join(path_rel_directory_output, ssid),
+            os.path.join(path_rel_directory_output, "wifi " + ssid),
             {"PASSWORD": password, "SSID": ssid, "COMPUTER": socket.gethostname(), "description": ""}
         ) for ssid, password in wifi_passwords.items()]
 
