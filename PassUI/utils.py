@@ -18,7 +18,12 @@ def write_gpg(path_abs_gpg, data_str, path_bin_gpg, gpg_mail):
     # Encrypt temporary file
     command = f'"{path_bin_gpg}" --batch --yes --output "{path_abs_gpg}" --encrypt --recipient {gpg_mail} "{path_data}"'
     print(f"utils.write_gpg : \n\t{command = }")
-    subprocess.check_output(command)
+    subprocess.check_output([
+        path_bin_gpg,
+        "--batch", "--yes",
+        "--output", path_abs_gpg,
+        "--encrypt", "--recipient", gpg_mail, path_data
+    ])
 
     # Overwrite file to remove from memory content
     tmp = open(path_data, "w")
