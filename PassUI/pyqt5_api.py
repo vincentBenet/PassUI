@@ -1,3 +1,4 @@
+import datetime
 import os
 import socket
 import sys
@@ -70,7 +71,6 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
 
     def set_settings(self):
         self.ui.PYPASS_GPG_BIN.setText(self.passpy_obj.PYPASS_GPG_BIN)
-        self.ui.PYPASS_GIT_BIN.setText(self.passpy_obj.PYPASS_GIT_BIN)
         self.ui.KEY_ID.setText(self.passpy_obj.KEY_ID)
         self.ui.PYPASS_STORE_DIR.setText(self.passpy_obj.PYPASS_STORE_DIR)
         self.ui.GIT_DIR.setText(self.passpy_obj.GIT_DIR)
@@ -81,8 +81,8 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
     def events(self):
         self.event_tree()
         self.event_table()
-        self.event_settings()
-        self.event_wifi()
+        self.event_config()
+        self.ui.wifi_run_import.clicked.connect(self.wifi_run_import_main)
 
     def event_tree(self):
         self.ui.treeWidget.itemChanged.connect(self.on_item_tree_changed)
@@ -98,23 +98,15 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         self.ui.tableWidget.setContextMenuPolicy(PyQt5.QtCore.Qt.CustomContextMenu)
         self.ui.tableWidget.customContextMenuRequested.connect(self.context_menu_table)
 
-    def event_settings(self):
-        self.ui.PYPASS_GPG_BIN.editingFinished.connect(lambda: self.edit_settings("PYPASS_GPG_BIN", "variables"))
-        self.ui.PYPASS_GIT_BIN.editingFinished.connect(lambda: self.edit_settings("PYPASS_GIT_BIN", "variables"))
-        self.ui.KEY_ID.editingFinished.connect(lambda: self.edit_settings("KEY_ID", "variables"))
-        self.ui.PYPASS_STORE_DIR.editingFinished.connect(lambda: self.edit_settings("PYPASS_STORE_DIR", "variables"))
-        self.ui.GIT_DIR.editingFinished.connect(lambda: self.edit_settings("GIT_DIR", "settings"))
-        self.ui.WEBBROWER_PATH.editingFinished.connect(lambda: self.edit_settings("WEBBROWER_PATH", "settings"))
-
-    def event_wifi(self):
-        self.ui.wifi_run_import.clicked.connect(self.wifi_run_import_main)
-        self.ui.wifi_output_dir.editingFinished.connect(lambda: self.edit_settings("wifi_output_dir", "wifi"))
-        self.ui.wifi_ssid_command.editingFinished.connect(lambda: self.edit_settings("wifi_ssid_command", "wifi"))
-        self.ui.wifi_ssid_regex_before.editingFinished.connect(lambda: self.edit_settings("wifi_ssid_regex_before", "wifi"))
-        self.ui.wifi_ssid_regex_after.editingFinished.connect(lambda: self.edit_settings("wifi_ssid_regex_after", "wifi"))
-        self.ui.wifi_password_command.editingFinished.connect(lambda: self.edit_settings("wifi_password_command", "wifi"))
-        self.ui.wifi_password_regex_before.editingFinished.connect(lambda: self.edit_settings("wifi_password_regex_before", "wifi"))
-        self.ui.wifi_password_regex_after.editingFinished.connect(lambda: self.edit_settings("wifi_password_regex_after", "wifi"))
+    def event_config(self):
+        [
+            [
+                getattr(self.ui, key2).editingFinished.connect(self.edit_settings)
+                for key2, value2 in value1.items()
+                if hasattr(self.ui, key2)
+            ]
+            for key1, value1 in self.passpy_obj.config.items()
+        ]
 
     def wifi_run_import_main(self):
         with Logger(self.ui.wifi_output_prompt):
@@ -133,16 +125,13 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             {"PASSWORD": password, "SSID": ssid, "COMPUTER": socket.gethostname(), "description": ""}
         ) for ssid, password in wifi_passwords.items()]
 
-    def edit_settings(self, var, key1):
-        new_value = getattr(self.ui, var).text()
-        old_value = getattr(self.passpy_obj, var)
-        if old_value == new_value:
+    def edit_settings(self):
+        obj = self.sender()
+        key = obj.objectName()
+        value = obj.text()
+        if not self.passpy_obj.change_config(key, value):
             return
-        setattr(self.passpy_obj, var, new_value)
-        if key1 not in self.passpy_obj.config:
-            self.passpy_obj.config[key1] = {}
-        self.passpy_obj.config[key1][var] = new_value
-        utils.overwrite_config(self.passpy_obj.config)
+        utils.write_config(self.passpy_obj.config)
         PyQt5.QtCore.QCoreApplication.quit()
         PyQt5.QtCore.QProcess.startDetached(sys.executable, sys.argv)
 
@@ -164,9 +153,6 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         item = self.ui.treeWidget.itemAt(position)
         if item is None:
             return self.add_context([
-                # ["Export all to CSV", self.action_export_csv_all],
-                # ["GIT PULL", self.action_git_pull],
-                # ["GIT PUSH", self.action_git_push],
                 ["Add folder", self.action_add_folder_top],
                 ["Add password", self.action_add_password_top],
             ], self.treeWidget, position)
@@ -181,7 +167,6 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
                 ["Add folder", self.action_add_folder],
                 ["Delete", self.action_remove_folder],
                 ["Add password", self.action_add_password],
-                # ["Export to CSV", self.action_export_csv],
             ], item, position)
 
     def action_add_password_top(self, _):
@@ -214,6 +199,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
                 "url": "",
                 "user": "",
                 "mail": "",
+                "date": datetime.datetime.now().strftime('%a %d %b %Y, %I:%M%p')
             }
         )
 
