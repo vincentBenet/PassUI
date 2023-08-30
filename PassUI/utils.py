@@ -30,9 +30,7 @@ def write_gpg(path_abs_gpg, data_str, path_bin_gpg, gpg_mail):
 
 
 def read_gpg(path_abs_gpg, path_bin_gpg):
-    command = f'"{path_bin_gpg}" --decrypt "{path_abs_gpg}"'
-    print(f"utils.read_gpg : \n\t{command = }")
-    data_str = subprocess.check_output(command, encoding="437")
+    data_str = subprocess.check_output([path_bin_gpg, "--decrypt", path_abs_gpg], encoding="437")
     print(f"\tOUTPUT: {data_str = }")
     return data_str
 
