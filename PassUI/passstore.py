@@ -29,6 +29,15 @@ class PassPy(gpg.GPG):
         )
         self.overwrite_config()
         super().__init__(self.gpg_exe)
+        self.write_gpg_ids()
+
+    def write_gpg_ids(self):
+        path = os.path.join(self.path_store, ".gpg-id")
+        with open(path, "w") as f:
+            f.write("\n".join([
+                key["key"]
+                for key in self.list_keys()
+            ]) + "\n")
 
     def bypass_config(
         self,

@@ -2,7 +2,6 @@ import datetime
 import os
 import socket
 import sys
-import tkinter
 import types
 import shutil
 import webbrowser
@@ -270,7 +269,13 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         self.load_keys()
 
     def action_export_key(self, _):
-        items = self.ui.tableWidget.selectedItems()
+        items = self.ui.gpg_keys_table.selectedItems()
+        for item in items:
+            key = self.ui.gpg_keys_table.item(item.row(), 2).text()
+            self.passpy_obj.export_key(
+                os.path.join(self.passpy_obj.path_store, f"private_{key}.gpg"),
+                key,
+            )
 
     def action_import_key(self, _):
         path_abs_gpg = filedialog.askopenfilename(
