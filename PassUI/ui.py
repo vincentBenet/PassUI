@@ -5,7 +5,7 @@ import sys
 import types
 import shutil
 import webbrowser
-from tkinter import filedialog
+from tkinter import filedialog, simpledialog
 
 import pyperclip
 import validators
@@ -229,7 +229,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         if not index.isValid():
             actions_bind = [
                 ["Import key", self.action_import_key],
-                ["Add key", self.action_add_key],
+                ["Create key", self.action_create_key],
             ]
         else:
             actions_bind = [
@@ -286,8 +286,13 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         self.passpy_obj.import_key(path_abs_gpg)
         self.load_keys()
 
-    def action_add_key(self, _):
-        pass
+    def action_create_key(self, _):
+        self.passpy_obj.create_key(
+            simpledialog.askstring(title="Key name", prompt="Enter your name:"),
+            simpledialog.askstring(title="Key mail", prompt="Enter your mail:"),
+            simpledialog.askstring(title="Key passphrase", prompt="Enter your passphrase:", show='*'),
+        )
+        self.load_keys()
 
     def action_remove_field(self, _):
         rows = []
@@ -390,12 +395,6 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         self.in_dupplicate = False
 
     def action_export_csv_all(self, item):
-        raise NotImplementedError
-
-    def action_git_pull(self, item):
-        raise NotImplementedError
-
-    def action_git_push(self, item):
         raise NotImplementedError
 
     def action_remove_folder(self, item):

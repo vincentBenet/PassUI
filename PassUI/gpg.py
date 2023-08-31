@@ -26,7 +26,7 @@ class GPG:
         print("GPG keys:")
         for i, str_key in enumerate(str_keys):
             key_infos = {
-                "encryption": re.findall(r"(?<=  )(\S*)(?= )", str_key.split("\n")[0])[0],
+                "encryption": re.findall(r"(?<=  )(\S*)(?= )", str_key.split("\n")[0])[-1],
                 "created": re.findall(r"[0-9]+-[0-9]+-[0-9]+", str_key)[0],
                 "key": re.findall(r"(?<= )(\S*)(?=\nuid)", str_key)[0],
                 "trust": re.findall(r"(?<=\[)(.*)(?=\])", str_key.split("\n")[2])[0].replace(" ", ""),
