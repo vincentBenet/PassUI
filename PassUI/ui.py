@@ -2,9 +2,11 @@ import datetime
 import os
 import socket
 import sys
+import tkinter
 import types
 import shutil
 import webbrowser
+from tkinter import filedialog
 
 import pyperclip
 import validators
@@ -13,7 +15,7 @@ import PyQt5
 import PyQt5.uic
 import PyQt5.QtCore
 import PyQt5.QtWidgets
-from PyQt5 import Qt, QtGui, QtCore
+from PyQt5 import Qt, QtGui
 from PyQt5.QtCore import Qt
 
 from PassUI import utils, wifi_extract
@@ -65,24 +67,42 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         self.edit_table = False
         self.in_dupplicate = False
         self.load_tree()
+        self.load_keys()
         self.set_settings()
         self.events()
         self.show()
 
-    def set_settings(self):
-        self.ui.PYPASS_GPG_BIN.setText(self.passpy_obj.PYPASS_GPG_BIN)
-        self.ui.KEY_ID.setText(self.passpy_obj.KEY_ID)
-        self.ui.PYPASS_STORE_DIR.setText(self.passpy_obj.PYPASS_STORE_DIR)
-        self.ui.GIT_DIR.setText(self.passpy_obj.GIT_DIR)
-        self.ui.WEBBROWER_PATH.setText(self.passpy_obj.WEBBROWER_PATH)
+    def load_keys(self):
+        self.ui.gpg_keys_table.setRowCount(0)
+        keys = self.passpy_obj.list_keys()
+        for i, key in enumerate(keys):
+            self.ui.gpg_keys_table.insertRow(i)
+            self.ui.gpg_keys_table.setItem(i, 0, PyQt5.QtWidgets.QTableWidgetItem(key["mail"]))
+            self.ui.gpg_keys_table.setItem(i, 1, PyQt5.QtWidgets.QTableWidgetItem(key["user"]))
+            self.ui.gpg_keys_table.setItem(i, 2, PyQt5.QtWidgets.QTableWidgetItem(key["key"]))
+            self.ui.gpg_keys_table.setItem(i, 3, PyQt5.QtWidgets.QTableWidgetItem(key["expire"]))
+            self.ui.gpg_keys_table.setItem(i, 4, PyQt5.QtWidgets.QTableWidgetItem(key["encryption"]))
+            self.ui.gpg_keys_table.setItem(i, 5, PyQt5.QtWidgets.QTableWidgetItem(key["trust"]))
+            self.ui.gpg_keys_table.setItem(i, 6, PyQt5.QtWidgets.QTableWidgetItem(key["created"]))
+        self.ui.gpg_keys_table.horizontalHeader().setSectionResizeMode(PyQt5.QtWidgets.QHeaderView.ResizeToContents)
 
+    def set_settings(self):
+        self.ui.gpg_exe.setText(self.passpy_obj.gpg_exe)
+        self.ui.path_store.setText(self.passpy_obj.path_store)
+        self.ui.ignore_dir.setText(self.passpy_obj.ignore_dir)
+        self.ui.path_browser.setText(self.passpy_obj.path_browser)
         self.ui.wifi_output_dir.setText(self.passpy_obj.wifi_output_dir)
 
     def events(self):
         self.event_tree()
         self.event_table()
+        self.event_table_keys()
         self.event_config()
         self.ui.wifi_run_import.clicked.connect(self.wifi_run_import_main)
+
+    def event_table_keys(self):
+        self.ui.gpg_keys_table.setContextMenuPolicy(PyQt5.QtCore.Qt.CustomContextMenu)
+        self.ui.gpg_keys_table.customContextMenuRequested.connect(self.context_menu_table_keys)
 
     def event_tree(self):
         self.ui.treeWidget.itemChanged.connect(self.on_item_tree_changed)
@@ -170,7 +190,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             ], item, position)
 
     def action_add_password_top(self, _):
-        _, key = utils.new_incr(self.passpy_obj.PYPASS_STORE_DIR, "password", ".gpg")
+        _, key = utils.new_incr(self.passpy_obj.path_store, "password", ".gpg")
         child = PyQt5.QtWidgets.QTreeWidgetItem()
         child.setText(0, key)
         self.ui.treeWidget.invisibleRootItem().addChild(child)
@@ -185,7 +205,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         parent.addChild(child)
         child.setFlags(child.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
         self.resize_tree()
-        path_rel = utils.abs_to_rel(self.passpy_obj.PYPASS_STORE_DIR, path)
+        path_rel = utils.abs_to_rel(self.passpy_obj.path_store, path)
         print(f"{path = }")
         print(f"{path_rel = }")
         self.add_password_file(path_rel)
@@ -203,6 +223,27 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             }
         )
 
+    def context_menu_table_keys(self, position):
+        index = self.ui.gpg_keys_table.indexAt(position)
+        menu = PyQt5.QtWidgets.QMenu(self)
+        actions = []
+        if not index.isValid():
+            actions_bind = [
+                ["Import key", self.action_import_key],
+                ["Add key", self.action_add_key],
+            ]
+        else:
+            actions_bind = [
+                ["Export key", self.action_export_key],
+                ["Delete key", self.action_delete_key],
+            ]
+        for action, func in actions_bind:
+            actions.append(menu.addAction(action))
+        action = menu.exec_(self.ui.gpg_keys_table.viewport().mapToGlobal(position))
+        for i, action_check in enumerate(actions):
+            if action == action_check:
+                actions_bind[i][1](index)
+
     def context_menu_table(self, position):
         index = self.ui.tableWidget.indexAt(position)
         menu = PyQt5.QtWidgets.QMenu(self)
@@ -219,6 +260,29 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         for i, action_check in enumerate(actions):
             if action == action_check:
                 actions_bind[i][1](index)
+
+    def action_delete_key(self, _):
+        keys = []
+        items = self.ui.gpg_keys_table.selectedItems()
+        for item in items:
+            keys.append(self.ui.gpg_keys_table.item(item.row(), 2).text())
+        self.passpy_obj.remove_key(keys=keys)
+        self.load_keys()
+
+    def action_export_key(self, _):
+        items = self.ui.tableWidget.selectedItems()
+
+    def action_import_key(self, _):
+        path_abs_gpg = filedialog.askopenfilename(
+            initialdir=self.passpy_obj.path_store,
+            title="Select a private key",
+            filetypes=[("GPG private key", "*.*")]
+        )
+        self.passpy_obj.import_key(path_abs_gpg)
+        self.load_keys()
+
+    def action_add_key(self, _):
+        pass
 
     def action_remove_field(self, _):
         rows = []
@@ -311,7 +375,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
 
     def action_add_folder_top(self, _):
         self.in_dupplicate = True
-        path, key = utils.new_incr(self.passpy_obj.PYPASS_STORE_DIR, "folder")
+        path, key = utils.new_incr(self.passpy_obj.path_store, "folder")
         os.mkdir(path)
         child = PyQt5.QtWidgets.QTreeWidgetItem()
         child.setText(0, key)
@@ -332,7 +396,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
     def action_remove_folder(self, item):
         path = get_rel_path(item)
         if not path:
-            path = self.passpy_obj.PYPASS_STORE_DIR
+            path = self.passpy_obj.path_store
         self.confirm(
             lambda: self.remove_folder(item),
             f"Delete folder '{item.text(0)}' in '{path}' ?"
@@ -406,8 +470,8 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
 
     def get_abs_path(self, item, folder=False):
         if item is None and folder:
-            return self.passpy_obj.PYPASS_STORE_DIR
-        return os.path.join(self.passpy_obj.PYPASS_STORE_DIR, get_rel_path(item), item.text(0)) + (
+            return self.passpy_obj.path_store
+        return os.path.join(self.passpy_obj.path_store, get_rel_path(item), item.text(0)) + (
                 ".gpg" * (not folder))
 
     def on_item_table_clicked(self, row, col):

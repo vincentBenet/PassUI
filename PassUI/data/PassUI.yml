@@ -1,12 +1,10 @@
 variables:
-    PYPASS_GPG_BIN: gpg2
-    PYPASS_GIT_BIN: git
-    PYPASS_STORE_DIR: D:\Synology\GDriveGadz\PASS
-    KEY_ID: USERGPGKEY
+    gpg_exe: gpg2
+    path_store: D:\Synology\GDriveGadz\PASS
 
 settings:
-    GIT_DIR: .git
-    WEBBROWER_PATH: C:/Program Files/Google/Chrome/Application/chrome.exe %s
+    ignore_dir: .git
+    path_browser: C:/Program Files/Google/Chrome/Application/chrome.exe %s
     
 wifi:
     wifi_output_dir: wifi

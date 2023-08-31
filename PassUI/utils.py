@@ -1,43 +1,6 @@
 import os
-import tempfile
-import subprocess
 from pathlib import Path
 import yaml
-
-
-def write_gpg(path_abs_gpg, data_str, path_bin_gpg, gpg_mail):
-    path_abs_dir = os.path.dirname(path_abs_gpg)
-    os.makedirs(path_abs_dir, exist_ok=True)
-
-    # Create temporary file
-    tmp = tempfile.NamedTemporaryFile(delete=False)
-    path_data = tmp.name
-    tmp.write(data_str.encode())
-    tmp.close()
-
-    # Encrypt temporary file
-    command = f'"{path_bin_gpg}" --batch --yes --output "{path_abs_gpg}" --encrypt --recipient {gpg_mail} "{path_data}"'
-    print(f"utils.write_gpg : \n\t{command = }")
-    subprocess.check_output([
-        path_bin_gpg,
-        "--batch", "--yes",
-        "--output", path_abs_gpg,
-        "--encrypt", "--recipient", gpg_mail, path_data
-    ])
-
-    # Overwrite file to remove from memory content
-    tmp = open(path_data, "w")
-    tmp.write("")
-    tmp.close()
-
-    # Remove empty file path from Temp directory
-    os.remove(path_data)
-
-
-def read_gpg(path_abs_gpg, path_bin_gpg):
-    data_str = subprocess.check_output([path_bin_gpg, "--decrypt", path_abs_gpg], encoding="437")
-    print(f"\tOUTPUT: {data_str = }")
-    return data_str
 
 
 def get_config_path():
