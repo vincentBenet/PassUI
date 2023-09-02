@@ -228,20 +228,50 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         actions = []
         if not index.isValid():
             actions_bind = [
-                ["Import key", self.action_import_key],
-                ["Create key", self.action_create_key],
+                ["Import", self.action_import_key],
+                ["Create", self.action_create_key],
             ]
         else:
+
             actions_bind = [
-                ["Export key", self.action_export_key],
-                ["Delete key", self.action_delete_key],
+                ["Export", self.action_export_key],
+                ["Delete", self.action_delete_key],
             ]
+            enabled = []
+            disabled = []
+            items = self.ui.gpg_keys_table.selectedItems()
+            for item in items:
+                key = self.ui.gpg_keys_table.item(item.row(), 2).text()
+                if key in self.passpy_obj.config["settings"]["disabled_keys"]:
+                    disabled.append(key)
+                else:
+                    enabled.append(key)
+            if enabled:
+                actions_bind.append(["Disable", self.action_disable_key])
+            if disabled:
+                actions_bind.append(["Enable", self.action_enable_key])
         for action, func in actions_bind:
             actions.append(menu.addAction(action))
         action = menu.exec_(self.ui.gpg_keys_table.viewport().mapToGlobal(position))
         for i, action_check in enumerate(actions):
             if action == action_check:
                 actions_bind[i][1](index)
+
+    def action_disable_key(self, _):
+        items = self.ui.gpg_keys_table.selectedItems()
+        for item in items:
+            key = self.ui.gpg_keys_table.item(item.row(), 2).text()
+            if key not in self.passpy_obj.config["settings"]["disabled_keys"]:
+                self.passpy_obj.config["settings"]["disabled_keys"].append(key)
+        utils.write_config(self.passpy_obj.config)
+
+    def action_enable_key(self, _):
+        items = self.ui.gpg_keys_table.selectedItems()
+        for item in items:
+            key = self.ui.gpg_keys_table.item(item.row(), 2).text()
+            if key in self.passpy_obj.config["settings"]["disabled_keys"]:
+                self.passpy_obj.config["settings"]["disabled_keys"].remove(key)
+        utils.write_config(self.passpy_obj.config)
 
     def context_menu_table(self, position):
         index = self.ui.tableWidget.indexAt(position)

@@ -4,8 +4,7 @@ import subprocess
 
 def run(command):
     output = subprocess.check_output(
-        command,
-        shell=True, encoding="437",)
+        command, encoding="437",)
     return output
 
 

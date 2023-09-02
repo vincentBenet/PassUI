@@ -3,6 +3,7 @@ variables:
     path_store: D:\Synology\GDriveGadz\PASS
 
 settings:
+    disabled_keys: []
     ignore_dir: .git
     path_browser: C:/Program Files/Google/Chrome/Application/chrome.exe %s
     
