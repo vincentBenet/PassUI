@@ -4,7 +4,9 @@ variables:
 
 settings:
     disabled_keys: []
-    ignore_dir: .git
+    ignored_directories:
+        - .git
+    ignored_files: []
     path_browser: C:/Program Files/Google/Chrome/Application/chrome.exe %s
     
 wifi:

@@ -25,19 +25,22 @@ class GPG:
         res = []
         print("GPG keys:")
         for i, str_key in enumerate(str_keys):
-            key_infos = {
-                "encryption": re.findall(r"(?<=  )(\S*)(?= )", str_key.split("\n")[0])[-1],
-                "created": re.findall(r"[0-9]+-[0-9]+-[0-9]+", str_key)[0],
-                "key": re.findall(r"(?<= )(\S*)(?=\nuid)", str_key)[0],
-                "trust": re.findall(r"(?<=\[)(.*)(?=\])", str_key.split("\n")[2])[0].replace(" ", ""),
-                "mail": re.findall(r"(?<=<)(.*@.*..*)(?=>)", str_key)[0],
-                "user": re.findall(r"(?<=\] )(.*)(?= <)", str_key)[0],
-                "expire": re.findall(r"[0-9]+-[0-9]+-[0-9]+", str_key)[-1],
-            }
-            print(f"\tKEY {i}")
-            for info, value in key_infos.items():
-                print(f"\t\t{info} = {value}")
-            res.append(key_infos)
+            try:
+                key_infos = {
+                    "encryption": re.findall(r"(?<=  )(\S*)(?= )", str_key.split("\n")[0])[-1],
+                    "created": re.findall(r"[0-9]+-[0-9]+-[0-9]+", str_key)[0],
+                    "key": re.findall(r"(?<= )(\S*)(?=\nuid)", str_key)[0],
+                    "trust": re.findall(r"(?<=\[)(.*)(?=\])", str_key.split("\n")[2])[0].replace(" ", ""),
+                    "mail": re.findall(r"(?<=<)(.*@.*..*)(?=>)", str_key)[0],
+                    "user": re.findall(r"(?<=\] )(.*)(?= <)", str_key)[0],
+                    "expire": re.findall(r"[0-9]+-[0-9]+-[0-9]+", str_key)[-1],
+                }
+                print(f"\tKEY {i}")
+                for info, value in key_infos.items():
+                    print(f"\t\t{info} = {value}")
+                res.append(key_infos)
+            except IndexError:
+                print("_"*50+f"\nERROR key {i}\n{str_key}\n"+"_"*50)
         return res
 
     def import_key(self, path_abs_gpg, passphrase=None):
@@ -67,7 +70,7 @@ class GPG:
                 f"Name-Real: {name}",
                 f"Name-Email: {mail}",
                 f"Passphrase: {passphrase}" if passphrase is not None else "",
-                "Expire-Date: 0",
+                # "Expire-Date: never",
             ]).encode())
         self.run(["--batch", "--gen-key", path_tmp])
         os.remove(path_tmp)
@@ -88,9 +91,13 @@ class GPG:
                 key_id
             ])
 
-    def encrypt(self, path_abs_gpg, path_abs_file, passphrase=None):
+    def encrypt(self, path_abs_gpg, path_abs_file, disabled_keys=None):
+        if disabled_keys is None:
+            disabled_keys = []
         recipients = []
         for key in self.list_keys():
+            if key["key"] in disabled_keys:
+                continue
             recipients.append("--recipient")
             recipients.append(key["key"])
         self.run([
@@ -102,14 +109,14 @@ class GPG:
             path_abs_file
         ])
 
-    def write(self, path_abs_gpg, data_str, passphrase=None):
+    def write(self, path_abs_gpg, data_str, passphrase=None, disabled_keys=None):
         path_abs_dir = os.path.dirname(path_abs_gpg)
         os.makedirs(path_abs_dir, exist_ok=True)
         tmp = tempfile.NamedTemporaryFile(delete=False)
         path_data = tmp.name
         tmp.write(data_str.encode())
         tmp.close()
-        self.encrypt(path_abs_gpg, path_data, passphrase)
+        self.encrypt(path_abs_gpg, path_data, disabled_keys)
         tmp = open(path_data, "w")
         tmp.write("")
         tmp.close()

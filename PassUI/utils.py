@@ -68,16 +68,26 @@ def abs_to_rel_gpg(path_abs_store, path_abs):
     return path_abs[len(path_abs_store)+1:]
 
 
-def rel_paths_gpg(path_abs_store, path_rel_gitdir):
+def rel_paths_gpg(path_abs_store, ignored_directories, ignored_files):
     res = {}
-    path_abs_gitdir = os.path.join(path_abs_store, path_rel_gitdir)
+    paths_ignored_directories = [
+        os.path.join(path_abs_store, path_rel) for path_rel in ignored_directories]
+    paths_ignored_files = [
+        os.path.join(path_abs_store, path_rel) for path_rel in ignored_files]
     for root, dirs, files in os.walk(path_abs_store):
-        if root.startswith(path_abs_gitdir):
+        continue_ignored = False
+        for path_abs_ingored in paths_ignored_directories:
+            if root.startswith(path_abs_ingored):
+                continue_ignored = True
+                break
+        if continue_ignored:
             continue
         rel_path = abs_to_rel_gpg(path_abs_store, root)
         if not len(rel_path):
             for file in files:
                 if not file.endswith(".gpg"):
+                    continue
+                if os.path.join(root, file) in paths_ignored_files:
                     continue
                 passkey = file[:-len(".gpg")]
                 res[passkey] = passkey
@@ -89,6 +99,8 @@ def rel_paths_gpg(path_abs_store, path_rel_gitdir):
             dico = dico[key]
         for file in files:
             if not file.endswith(".gpg"):
+                continue
+            if os.path.join(root, file) in paths_ignored_files:
                 continue
             passkey = file[:-len(".gpg")]
             key_rel_path = os.path.join(rel_path, passkey)

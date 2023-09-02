@@ -11,11 +11,11 @@ class PassPy(gpg.GPG):
         self,
         gpg_exe=None,
         path_store=None,
-        ignore_dir=".git",
     ):
-        self.ignore_dir = None
         self.gpg_exe = None
         self.path_store = None
+        self.ignored_files = None
+        self.ignored_directories = None
         self.config_path = {}
         self.config = self.load_config()
 
@@ -25,7 +25,6 @@ class PassPy(gpg.GPG):
         self.bypass_config(
             gpg_exe,
             path_store,
-            ignore_dir,
         )
         self.overwrite_config()
         super().__init__(self.gpg_exe)
@@ -43,7 +42,6 @@ class PassPy(gpg.GPG):
         self,
         gpg_exe,
         path_store,
-        ignore_dir,
     ):
         for key, value in locals().items():
             if key not in self.config:
@@ -110,7 +108,8 @@ class PassPy(gpg.GPG):
     def rel_paths_gpg(self):
         return utils.rel_paths_gpg(
             self.path_store,
-            self.ignore_dir
+            self.ignored_directories,
+            self.ignored_files
         )
 
     def rel_to_abs(self, rel_path):
@@ -124,10 +123,12 @@ class PassPy(gpg.GPG):
 
     def write_key(self, path_rel, data_dict):
         data_str = utils.data_dict_to_str(data_dict)
-        self.write_gpg(os.path.join(self.path_store, path_rel + ".gpg"), data_str)
 
-    def write_gpg(self, path_abs_gpg, data_str):
-        self.write(path_abs_gpg, data_str)
+        self.write(
+            os.path.join(self.path_store, path_rel + ".gpg"),
+            data_str,
+            disabled_keys=self.config["settings"]["disabled_keys"]
+        )
 
     def read_gpg(self, path_abs_gpg):
         return self.read(path_abs_gpg)

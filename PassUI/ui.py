@@ -16,15 +16,42 @@ import PyQt5.QtCore
 import PyQt5.QtWidgets
 from PyQt5 import Qt, QtGui
 from PyQt5.QtCore import Qt
-
 from PassUI import utils, wifi_extract
 
+"""BUGS"""
+# TODO: import key trust level to 5
+# TODO: Create key expire set to never
+
 """TODO"""
-# TODO: git pull
-# TODO: git push
-# TODO: git init
-# TODO: passpy init
-# TODO: link git remote url
+# TODO: ALL: Dynamic hide/show tabs
+
+# TODO: settings: Buttons browses for GPG & store dir
+# TODO: settings: Buttons browses for GPG & store dir
+# TODO: settings: Show user-setting path
+# TODO: settings: Reset settings button
+# TODO: settings: display all settings in table (non modifiable)
+# TODO: settings: Multiple ignored directories (list)
+
+# TODO: Keys: auto add ignored path on GPG key export
+
+# TODO: passwords: Add ignored option in context menu on selection
+# TODO: passwords: Export CSV folders selected
+# TODO: passwords: Import CSV
+# TODO: passwords: Edit name mode when new password / new folder created
+
+# TODO: keys: Confirmation supression clé GPG
+
+# TODO: git: commandes: init, remote, add, commit, push, pull
+# TODO: git: tableau des logs
+# TODO: git: tableau des diff
+# TODO: git: editLine remote URL
+# TODO: git: bouton push
+# TODO: git: bouton pull
+# TODO: git: bouton commit
+# TODO: git: bouton clone
+
+# TODO: gpg: encrypt/decrypt file/folder in tree
+
 
 """Features"""
 # TODO: Import windows wifi passwords
@@ -37,7 +64,9 @@ from PassUI import utils, wifi_extract
 # TODO: Import MAC wifi passwords
 
 
-def get_rel_path(item):
+def get_rel_path(item, file=False):
+    if file:
+        return os.path.join(get_rel_path(item), item.text(0) + ".gpg")
     parents = []
     current = item
     while True:
@@ -71,9 +100,11 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         self.events()
         self.show()
 
+
     def load_keys(self):
         self.ui.gpg_keys_table.setRowCount(0)
         keys = self.passpy_obj.list_keys()
+        nb_columns = self.ui.gpg_keys_table.columnCount()
         for i, key in enumerate(keys):
             self.ui.gpg_keys_table.insertRow(i)
             self.ui.gpg_keys_table.setItem(i, 0, PyQt5.QtWidgets.QTableWidgetItem(key["mail"]))
@@ -83,6 +114,12 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             self.ui.gpg_keys_table.setItem(i, 4, PyQt5.QtWidgets.QTableWidgetItem(key["encryption"]))
             self.ui.gpg_keys_table.setItem(i, 5, PyQt5.QtWidgets.QTableWidgetItem(key["trust"]))
             self.ui.gpg_keys_table.setItem(i, 6, PyQt5.QtWidgets.QTableWidgetItem(key["created"]))
+            if key["key"] in self.passpy_obj.config["settings"]["disabled_keys"]:
+                for j in range(nb_columns):
+                    item = self.ui.gpg_keys_table.item(i, j)
+                    f = item.font()
+                    f.setStrikeOut(True)
+                    item.setFont(f)
         self.ui.gpg_keys_table.horizontalHeader().setSectionResizeMode(PyQt5.QtWidgets.QHeaderView.ResizeToContents)
 
     def set_settings(self):
@@ -174,19 +211,39 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             return self.add_context([
                 ["Add folder", self.action_add_folder_top],
                 ["Add password", self.action_add_password_top],
+                ["Ignore folder", self.action_ignore_folder],
             ], self.treeWidget, position)
         if os.path.isfile(self.get_abs_path(item)):
             return self.add_context([
-                ["Delete", self.action_remove],
+                ["Delete password", self.action_remove],
                 ["Copy infos", self.action_copy_clipboard],
                 ["Dupplicate file", self.action_dupplicate],
+                ["Ignore file", self.action_ignore_file],
             ], item, position)
         else:
             return self.add_context([
                 ["Add folder", self.action_add_folder],
-                ["Delete", self.action_remove_folder],
+                ["Delete folder", self.action_remove_folder],
                 ["Add password", self.action_add_password],
             ], item, position)
+
+    def action_ignore_folder(self, item):
+        self.passpy_obj.config["settings"]["ignored_directories"].append(get_rel_path(item))
+        utils.write_config(self.passpy_obj.config)
+        parent = item.parent()
+        if parent is not None:
+            parent.removeChild(item)
+        else:
+            self.ui.treeWidget.takeTopLevelItem(self.ui.treeWidget.indexOfTopLevelItem(item))
+
+    def action_ignore_file(self, item):
+        self.passpy_obj.config["settings"]["ignored_files"].append(get_rel_path(item, file=True))
+        utils.write_config(self.passpy_obj.config)
+        parent = item.parent()
+        if parent is not None:
+            parent.removeChild(item)
+        else:
+            self.ui.treeWidget.takeTopLevelItem(self.ui.treeWidget.indexOfTopLevelItem(item))
 
     def action_add_password_top(self, _):
         _, key = utils.new_incr(self.passpy_obj.path_store, "password", ".gpg")
@@ -198,16 +255,13 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
     def action_add_password(self, item):
         self.in_dupplicate = True
         path, key = utils.new_incr(self.get_abs_path(item, folder=True), "password", ".gpg")
+        self.add_password_file(utils.abs_to_rel(self.passpy_obj.path_store, path))
         child = PyQt5.QtWidgets.QTreeWidgetItem()
         child.setText(0, key)
         parent = item
         parent.addChild(child)
         child.setFlags(child.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
         self.resize_tree()
-        path_rel = utils.abs_to_rel(self.passpy_obj.path_store, path)
-        print(f"{path = }")
-        print(f"{path_rel = }")
-        self.add_password_file(path_rel)
         self.in_dupplicate = False
 
     def add_password_file(self, rel_path):
@@ -232,10 +286,9 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
                 ["Create", self.action_create_key],
             ]
         else:
-
             actions_bind = [
                 ["Export", self.action_export_key],
-                ["Delete", self.action_delete_key],
+                ["Delete", self.action_remove_key],
             ]
             enabled = []
             disabled = []
@@ -264,6 +317,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             if key not in self.passpy_obj.config["settings"]["disabled_keys"]:
                 self.passpy_obj.config["settings"]["disabled_keys"].append(key)
         utils.write_config(self.passpy_obj.config)
+        self.load_keys()
 
     def action_enable_key(self, _):
         items = self.ui.gpg_keys_table.selectedItems()
@@ -272,6 +326,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             if key in self.passpy_obj.config["settings"]["disabled_keys"]:
                 self.passpy_obj.config["settings"]["disabled_keys"].remove(key)
         utils.write_config(self.passpy_obj.config)
+        self.load_keys()
 
     def context_menu_table(self, position):
         index = self.ui.tableWidget.indexAt(position)
@@ -280,8 +335,8 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         if not index.isValid():
             return
         actions_bind = [
-            ["Remove field", self.action_remove_field],
-            ["Add field", self.action_add_field],
+            ["Remove", self.action_remove_field],
+            ["Add", self.action_add_field],
         ]
         for action, func in actions_bind:
             actions.append(menu.addAction(action))
@@ -290,7 +345,14 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             if action == action_check:
                 actions_bind[i][1](index)
 
-    def action_delete_key(self, _):
+    def action_remove_key(self, _):
+        sep = "\n\t- "
+        self.confirm(
+            lambda: self.remove_key(),
+            f"Delete keys {sep}{sep.join([self.ui.gpg_keys_table.item(item.row(), 0).text() for item in self.ui.gpg_keys_table.selectedItems()])}"
+        )
+
+    def remove_key(self):
         keys = []
         items = self.ui.gpg_keys_table.selectedItems()
         for item in items:
@@ -534,10 +596,9 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
 
     def load_tree(self):
         self.ui.treeWidget.clear()
-        rel_paths_gpg = self.passpy_obj.rel_paths_gpg
         self.fill_item(
             self.ui.treeWidget.invisibleRootItem(),
-            rel_paths_gpg
+            self.passpy_obj.rel_paths_gpg
         )
 
     def fill_item(self, item, value):
