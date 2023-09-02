@@ -4,7 +4,7 @@ def main():
     import PassUI
 
     app = QtWidgets.QApplication([])  # Create an instance of QtWidgets.QApplication
-    passpy_obj = PassUI.passstore.PassPy()  # Init of backend
+    passpy_obj = PassUI.passstore.PassStore()  # Init of backend
     PassUI.ui.PassUI(passpy_obj)  # Init of frontend
     app.exec_()  # Start the application
 

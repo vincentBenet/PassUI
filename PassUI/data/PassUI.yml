@@ -1,6 +1,6 @@
 variables:
     gpg_exe: gpg2
-    path_store: D:\Synology\GDriveGadz\PASS
+    path_store:
 
 settings:
     disabled_keys: []

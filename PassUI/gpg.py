@@ -1,21 +1,61 @@
 import os
 import re
+import sys
 import subprocess
 import tempfile
+from tkinter import filedialog
 
 
 class GPG:
     def __init__(self, gpg_exe="gpg"):
         self.gpg_exe = gpg_exe
+        self.check_path_gpg()
+
+    def check_path_gpg(self):
+        if os.path.isfile(self.gpg_exe):
+            return True
+        print(f"GPG executable not found at {self.gpg_exe} with {sys.platform}")
+        self.search_gpg_exe()
+        while not os.path.isfile(self.gpg_exe):
+            self.gpg_exe = filedialog.askopenfilename(
+                initialdir="/",
+                title="Select gpg.exe / gpg2.exe",
+                filetypes=[("GPG executable", "gpg.exe gpg2.exe")]
+            )
+
+    def search_gpg_exe(self):
+        if sys.platform == "win32":
+            command = "where"
+            argu = "gpg"
+            output = subprocess.check_output(
+                f"{command} {argu}", shell=True, encoding="437")
+            paths = output.split("\n")
+            for path in paths:
+                path = path.replace("\r", "")
+                if os.path.isfile(path):
+                    self.gpg_exe = path
+                    print(f"Get path of GPG at {self.gpg_exe}")
+                    break
+        else:
+            command = "which"
+            argu = "gpg"
+            output = subprocess.check_output(
+                f"{command} {argu}", shell=True, encoding="437")
+            paths = output.split("\n")
+            for path in paths:
+                path = path.replace("\r", "")
+                if os.path.isfile(path):
+                    self.gpg_exe = path
+                    break
 
     def run(self, commands, gpg_cmd=True):
         if isinstance(commands, str):
             commands = [commands]
         if gpg_cmd:
             commands = [self.gpg_exe] + commands
-        print(f"GPG:\n\t{commands = }")
+        # print(f"GPG:\n\t{commands = }")
         res = subprocess.check_output(commands, encoding="437")
-        print(f"\t{repr(res)}")
+        # print(f"\t{repr(res)}")
         return res
 
     def list_keys(self):
@@ -23,7 +63,7 @@ class GPG:
         filtered_header = "".join(str_list_keys.split("---------\n")[1:])
         str_keys = filtered_header.split("\n\n")[:-1]
         res = []
-        print("GPG keys:")
+        # print("GPG keys:")
         for i, str_key in enumerate(str_keys):
             try:
                 key_infos = {
@@ -35,9 +75,9 @@ class GPG:
                     "user": re.findall(r"(?<=\] )(.*)(?= <)", str_key)[0],
                     "expire": re.findall(r"[0-9]+-[0-9]+-[0-9]+", str_key)[-1],
                 }
-                print(f"\tKEY {i}")
-                for info, value in key_infos.items():
-                    print(f"\t\t{info} = {value}")
+                # print(f"\tKEY {i}")
+                # for info, value in key_infos.items():
+                    # print(f"\t\t{info} = {value}")
                 res.append(key_infos)
             except IndexError:
                 print("_"*50+f"\nERROR key {i}\n{str_key}\n"+"_"*50)
@@ -127,11 +167,3 @@ class GPG:
             *(["--pinentry-mode=loopback", "--passphrase", f"{passphrase}"] if passphrase is not None else []),
             "--decrypt", path_abs_gpg
         ])
-
-
-if __name__ == "__main__":
-    gpg_obj = GPG()
-    gpg_obj.create_key(r"C:\Users\vince\Documents\GDriveGadz\PASS\private.gpg")
-    gpg_obj.import_key(r"C:\Users\vince\Documents\GDriveGadz\PASS\private.gpg")
-    gpg_obj.write(r"C:\Users\vince\Documents\GDriveGadz\PASS\text.gpg", "bla")
-    gpg_obj.read(r"C:\Users\vince\Documents\GDriveGadz\PASS\text.gpg")

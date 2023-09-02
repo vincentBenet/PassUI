@@ -25,8 +25,7 @@ from PassUI import utils, wifi_extract
 """TODO"""
 # TODO: ALL: Dynamic hide/show tabs
 
-# TODO: settings: Buttons browses for GPG & store dir
-# TODO: settings: Buttons browses for GPG & store dir
+# TODO: settings: Button browse for store dir
 # TODO: settings: Show user-setting path
 # TODO: settings: Reset settings button
 # TODO: settings: display all settings in table (non modifiable)
@@ -34,7 +33,6 @@ from PassUI import utils, wifi_extract
 
 # TODO: Keys: auto add ignored path on GPG key export
 
-# TODO: passwords: Add ignored option in context menu on selection
 # TODO: passwords: Export CSV folders selected
 # TODO: passwords: Import CSV
 # TODO: passwords: Edit name mode when new password / new folder created
@@ -96,10 +94,21 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         self.in_dupplicate = False
         self.load_tree()
         self.load_keys()
+        self.load_config()
         self.set_settings()
         self.events()
         self.show()
 
+    def load_config(self):
+        self.ui.table_settings.setRowCount(0)
+        i = 0
+        for section, config_section in self.passpy_obj.config.items():
+            for setting, value in config_section.items():
+                self.ui.table_settings.insertRow(i)
+                self.ui.table_settings.setItem(i, 0, PyQt5.QtWidgets.QTableWidgetItem(section))
+                self.ui.table_settings.setItem(i, 1, PyQt5.QtWidgets.QTableWidgetItem(setting))
+                self.ui.table_settings.setItem(i, 2, PyQt5.QtWidgets.QTableWidgetItem(str(value)))
+        self.ui.table_settings.horizontalHeader().setSectionResizeMode(PyQt5.QtWidgets.QHeaderView.ResizeToContents)
 
     def load_keys(self):
         self.ui.gpg_keys_table.setRowCount(0)
@@ -123,17 +132,12 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         self.ui.gpg_keys_table.horizontalHeader().setSectionResizeMode(PyQt5.QtWidgets.QHeaderView.ResizeToContents)
 
     def set_settings(self):
-        self.ui.gpg_exe.setText(self.passpy_obj.gpg_exe)
-        self.ui.path_store.setText(self.passpy_obj.path_store)
-        self.ui.ignore_dir.setText(self.passpy_obj.ignore_dir)
-        self.ui.path_browser.setText(self.passpy_obj.path_browser)
         self.ui.wifi_output_dir.setText(self.passpy_obj.wifi_output_dir)
 
     def events(self):
         self.event_tree()
         self.event_table()
         self.event_table_keys()
-        self.event_config()
         self.ui.wifi_run_import.clicked.connect(self.wifi_run_import_main)
 
     def event_table_keys(self):
@@ -154,15 +158,18 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         self.ui.tableWidget.setContextMenuPolicy(PyQt5.QtCore.Qt.CustomContextMenu)
         self.ui.tableWidget.customContextMenuRequested.connect(self.context_menu_table)
 
-    def event_config(self):
-        [
-            [
-                getattr(self.ui, key2).editingFinished.connect(self.edit_settings)
-                for key2, value2 in value1.items()
-                if hasattr(self.ui, key2)
-            ]
-            for key1, value1 in self.passpy_obj.config.items()
-        ]
+    def change_path_store(self, _):
+        if self.passpy_obj.change_path_store(
+            filedialog.askdirectory(
+                initialdir=self.passpy_obj.path_store,
+                title="Select Store directory",
+            )
+        ):
+            self.restart_app()
+
+    def restart_app(self):
+        PyQt5.QtCore.QCoreApplication.quit()
+        PyQt5.QtCore.QProcess.startDetached(sys.executable, sys.argv)
 
     def wifi_run_import_main(self):
         with Logger(self.ui.wifi_output_prompt):
@@ -187,9 +194,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         value = obj.text()
         if not self.passpy_obj.change_config(key, value):
             return
-        utils.write_config(self.passpy_obj.config)
-        PyQt5.QtCore.QCoreApplication.quit()
-        PyQt5.QtCore.QProcess.startDetached(sys.executable, sys.argv)
+        self.restart_app()
 
     @PyQt5.QtCore.pyqtSlot(PyQt5.QtWidgets.QTreeWidgetItem, int)
     def on_item_tree_changed(self, item, _):
@@ -211,7 +216,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             return self.add_context([
                 ["Add folder", self.action_add_folder_top],
                 ["Add password", self.action_add_password_top],
-                ["Ignore folder", self.action_ignore_folder],
+                ["Change Path Store", self.change_path_store],
             ], self.treeWidget, position)
         if os.path.isfile(self.get_abs_path(item)):
             return self.add_context([
@@ -225,10 +230,11 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
                 ["Add folder", self.action_add_folder],
                 ["Delete folder", self.action_remove_folder],
                 ["Add password", self.action_add_password],
+                ["Ignore folder", self.action_ignore_folder],
             ], item, position)
 
     def action_ignore_folder(self, item):
-        self.passpy_obj.config["settings"]["ignored_directories"].append(get_rel_path(item))
+        self.passpy_obj.config["settings"]["ignored_directories"].append(os.path.join(get_rel_path(item), item.text(0)))
         utils.write_config(self.passpy_obj.config)
         parent = item.parent()
         if parent is not None:
@@ -237,13 +243,19 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             self.ui.treeWidget.takeTopLevelItem(self.ui.treeWidget.indexOfTopLevelItem(item))
 
     def action_ignore_file(self, item):
-        self.passpy_obj.config["settings"]["ignored_files"].append(get_rel_path(item, file=True))
-        utils.write_config(self.passpy_obj.config)
+        self.ignore_file(get_rel_path(item, file=True))
         parent = item.parent()
         if parent is not None:
             parent.removeChild(item)
         else:
             self.ui.treeWidget.takeTopLevelItem(self.ui.treeWidget.indexOfTopLevelItem(item))
+
+    def ignore_file(self, rel_path, remove=False):
+        if remove:
+            self.passpy_obj.config["settings"]["ignored_files"].remove(rel_path)
+        else:
+            self.passpy_obj.config["settings"]["ignored_files"].append(rel_path)
+        utils.write_config(self.passpy_obj.config)
 
     def action_add_password_top(self, _):
         _, key = utils.new_incr(self.passpy_obj.path_store, "password", ".gpg")
@@ -364,10 +376,10 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         items = self.ui.gpg_keys_table.selectedItems()
         for item in items:
             key = self.ui.gpg_keys_table.item(item.row(), 2).text()
-            self.passpy_obj.export_key(
-                os.path.join(self.passpy_obj.path_store, f"private_{key}.gpg"),
-                key,
-            )
+            filename = f"private_{key}.gpg"
+            path = os.path.join(self.passpy_obj.path_store, filename)
+            self.passpy_obj.export_key(path, key)
+            self.passpy_obj.ignore_file(filename)
 
     def action_import_key(self, _):
         path_abs_gpg = filedialog.askopenfilename(
@@ -602,7 +614,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         )
 
     def fill_item(self, item, value):
-        for key, val in sorted(value.items()):
+        for key, val in value.items():  # TODO: Sort dict
             child = PyQt5.QtWidgets.QTreeWidgetItem()
             child.setText(0, key)
             item.addChild(child)

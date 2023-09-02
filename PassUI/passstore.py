@@ -1,34 +1,54 @@
-import subprocess
 import os
-import sys
-from tkinter import filedialog
-from tkinter import Tk
+from pathlib import Path
 from PassUI import utils, gpg
 
 
-class PassPy(gpg.GPG):
-    def __init__(
-        self,
-        gpg_exe=None,
-        path_store=None,
-    ):
+class PassStore(gpg.GPG):
+    def __init__(self):
         self.gpg_exe = None
         self.path_store = None
         self.ignored_files = None
         self.ignored_directories = None
         self.config_path = {}
         self.config = self.load_config()
-
         self.check_path_store()
-        self.check_path_gpg()
-
-        self.bypass_config(
-            gpg_exe,
-            path_store,
-        )
+        self.check_ignored_files()
+        self.check_ignored_folders()
         self.overwrite_config()
         super().__init__(self.gpg_exe)
         self.write_gpg_ids()
+
+    def check_ignored_files(self):
+        for path_rel in self.ignored_files:
+            path_abs_ignored = os.path.join(
+                self.path_store,
+                path_rel
+            )
+            if not os.path.isfile(path_abs_ignored):
+                self.ignored_files.remove(path_rel)
+        self.ignored_files = list(set(self.ignored_files))
+
+    def check_ignored_folders(self):
+        for path_rel in self.ignored_directories:
+            path_abs_ignored = os.path.join(
+                self.path_store,
+                path_rel
+            )
+            if not os.path.isdir(path_abs_ignored):
+                self.ignored_directories.remove(path_rel)
+        self.ignored_directories = list(set(self.ignored_directories))
+
+    def change_path_store(self, path_store):
+        print(f"{path_store = }")
+        if (
+            path_store == self.path_store or
+            path_store is None or
+            not os.path.isdir(path_store)
+        ):
+            return False
+        self.change_config("path_store", path_store)
+        self.write_gpg_ids()
+        return True
 
     def write_gpg_ids(self):
         path = os.path.join(self.path_store, ".gpg-id")
@@ -37,16 +57,6 @@ class PassPy(gpg.GPG):
                 key["key"]
                 for key in self.list_keys()
             ]) + "\n")
-
-    def bypass_config(
-        self,
-        gpg_exe,
-        path_store,
-    ):
-        for key, value in locals().items():
-            if key not in self.config:
-                continue
-            self.change_config(key, value)
 
     def overwrite_config(self):
         for key1, value1 in self.config.items():
@@ -63,46 +73,11 @@ class PassPy(gpg.GPG):
         return config
 
     def check_path_store(self):
-        while not os.path.isdir(self.path_store):
-            root = Tk()
-            root.withdraw()
-            self.path_store = filedialog.askdirectory(
-                title="Select storage directory folder for PassUI",
-            )
-
-    def check_path_gpg(self):
-        if not os.path.isfile(self.gpg_exe):
-            print(f"GPG executable not found at {self.gpg_exe} with {sys.platform}")
-            if sys.platform == "win32":
-                command = "where"
-                argu = "gpg"
-                output_byte = subprocess.check_output(f"{command} {argu}", shell=True)
-                output = output_byte.decode()
-                paths = output.split("\n")
-                for path in paths:
-                    path = path.replace("\r", "")
-                    if os.path.isfile(path):
-                        self.gpg_exe = path
-                        print(f"Get path of GPG at {self.gpg_exe}")
-                        break
-                while not os.path.isfile(self.gpg_exe):
-                    print(f"GPG path not found, ask to the user")
-                    self.gpg_exe = filedialog.askopenfilename(
-                        initialdir="/",
-                        title="Select gpg.exe / gpg2.exe",
-                        filetypes=[("GPG executable", "gpg.exe gpg2.exe")]
-                    )
-            else:
-                command = "which"
-                argu = "gpg"
-                output_byte = subprocess.check_output(f"{command} {argu}", shell=True)
-                output = output_byte.decode()
-                paths = output.split("\n")
-                for path in paths:
-                    path = path.replace("\r", "")
-                    if os.path.isfile(path):
-                        self.gpg_exe = path
-                        break
+        if (
+            self.path_store is None or
+            not os.path.isdir(self.path_store)
+        ):
+            self.path_store = str(Path.home())
 
     @property
     def rel_paths_gpg(self):
@@ -112,26 +87,16 @@ class PassPy(gpg.GPG):
             self.ignored_files
         )
 
-    def rel_to_abs(self, rel_path):
-        return utils.rel_to_abs(self.path_store, rel_path)
-
     def read_key(self, path_rel):
-        path_abs_gpg = self.rel_to_abs(path_rel)
-        data_str = self.read_gpg(path_abs_gpg)
-        data_dict = utils.data_str_to_dict(data_str)
-        return data_dict
+        return utils.data_str_to_dict(self.read(utils.rel_to_abs(self.path_store, path_rel)))
 
     def write_key(self, path_rel, data_dict):
         data_str = utils.data_dict_to_str(data_dict)
-
         self.write(
             os.path.join(self.path_store, path_rel + ".gpg"),
             data_str,
             disabled_keys=self.config["settings"]["disabled_keys"]
         )
-
-    def read_gpg(self, path_abs_gpg):
-        return self.read(path_abs_gpg)
 
     def change_config(self, key, value):
         if key not in self.config_path:
@@ -146,4 +111,5 @@ class PassPy(gpg.GPG):
             return False
         dico[key] = value
         setattr(self, key, value)
+        utils.write_config(self.config)
         return True
