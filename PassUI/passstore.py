@@ -158,5 +158,5 @@ class PassStore(gpg.GPG):
             for root, subdirs, files in os.walk(path_abs):
                 for file in files:
                     path_abs_file = os.path.join(root, file)
-                    if file.endswith(".bgpg"):
+                    if path_abs_file.endswith(".bgpg"):
                         self.decrypt_file(path_abs_file, replace=replace)

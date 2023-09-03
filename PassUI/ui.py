@@ -174,8 +174,6 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             replace=True
         )
 
-
-
     def event_table_settings(self):
         self.ui.table_settings.setContextMenuPolicy(PyQt5.QtCore.Qt.CustomContextMenu)
         self.ui.table_settings.customContextMenuRequested.connect(self.context_menu_table_settings)
