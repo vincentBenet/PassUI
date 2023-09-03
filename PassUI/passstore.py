@@ -1,4 +1,5 @@
 import os
+import shutil
 from pathlib import Path
 from PassUI import utils, gpg
 
@@ -124,6 +125,7 @@ class PassStore(gpg.GPG):
         if replace:
             os.remove(path_abs)
 
+
     def decrypt_file(self, path_abs, replace=False):
         self.decrypt(
             path_abs,
@@ -131,3 +133,30 @@ class PassStore(gpg.GPG):
         )
         if replace:
             os.remove(path_abs)
+
+    def encrypt_directory(self, path_abs, replace=False, zip=False):
+        if zip:
+            shutil.make_archive(path_abs, 'zip', path_abs)
+            self.encrypt_file(path_abs + ".zip", replace=replace)
+            if replace:
+                shutil.rmtree(path_abs)
+        else:
+            for root, subdirs, files in os.walk(path_abs):
+                for file in files:
+                    path_abs_file = os.path.join(root, file)
+                    self.encrypt_file(path_abs_file, replace=replace)
+
+    def decrypt_directory(self, path_abs, replace=False, zip=False):
+        if zip:
+            self.decrypt_file(path_abs, replace=replace)
+            path_zip = path_abs[:-len(".bgpg")]
+            path_dest = path_zip[:-len(".zip")]
+            shutil.unpack_archive(path_zip, path_dest, "zip")
+            if replace:
+                os.remove(path_zip)
+        else:
+            for root, subdirs, files in os.walk(path_abs):
+                for file in files:
+                    path_abs_file = os.path.join(root, file)
+                    if file.endswith(".bgpg"):
+                        self.decrypt_file(path_abs_file, replace=replace)

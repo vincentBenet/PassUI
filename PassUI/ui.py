@@ -130,7 +130,9 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         self.event_table_settings()
         self.ui.wifi_run_import.clicked.connect(self.wifi_run_import_main)
         self.ui.button_encrypt_file.clicked.connect(self.encrypt_file)
+        self.ui.button_encrypt_directory.clicked.connect(self.encrypt_directory)
         self.ui.button_decrypt_file.clicked.connect(self.decrypt_file)
+        self.ui.button_decrypt_directory.clicked.connect(self.decrypt_directory)
 
     def encrypt_file(self):
         path_abs = filedialog.askopenfilename(
@@ -143,6 +145,16 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             f"Encrypt File {os.path.basename(path_abs)} at {os.path.dirname(path_abs)}"
         )
 
+    def encrypt_directory(self):
+        path_abs = filedialog.askdirectory(
+            initialdir=self.passpy_obj.path_store,
+            title="Select directory to encrypt",
+        )
+        self.confirm(
+            lambda: self.passpy_obj.encrypt_directory(path_abs, replace=True),
+            f"Encrypt Directory {os.path.basename(path_abs)} in {os.path.dirname(path_abs)}"
+        )
+
     def decrypt_file(self):
         self.passpy_obj.decrypt_file(
             filedialog.askopenfilename(
@@ -152,6 +164,17 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             ),
             replace=True
         )
+
+    def decrypt_directory(self):
+        self.passpy_obj.decrypt_directory(
+            filedialog.askdirectory(
+                initialdir=self.passpy_obj.path_store,
+                title="Select directory to decrypt",
+            ),
+            replace=True
+        )
+
+
 
     def event_table_settings(self):
         self.ui.table_settings.setContextMenuPolicy(PyQt5.QtCore.Qt.CustomContextMenu)
