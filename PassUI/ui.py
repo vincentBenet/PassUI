@@ -25,19 +25,9 @@ from PassUI import utils, wifi_extract
 """TODO"""
 # TODO: ALL: Dynamic hide/show tabs
 
-# TODO: settings: Button browse for store dir
-# TODO: settings: Show user-setting path
-# TODO: settings: Reset settings button
-# TODO: settings: display all settings in table (non modifiable)
-# TODO: settings: Multiple ignored directories (list)
-
-# TODO: Keys: auto add ignored path on GPG key export
-
 # TODO: passwords: Export CSV folders selected
 # TODO: passwords: Import CSV
 # TODO: passwords: Edit name mode when new password / new folder created
-
-# TODO: keys: Confirmation supression clé GPG
 
 # TODO: git: commandes: init, remote, add, commit, push, pull
 # TODO: git: tableau des logs
@@ -48,8 +38,7 @@ from PassUI import utils, wifi_extract
 # TODO: git: bouton commit
 # TODO: git: bouton clone
 
-# TODO: gpg: encrypt/decrypt file/folder in tree
-
+# TODO: gpg: encrypt/decrypt file/folder
 
 """Features"""
 # TODO: Import windows wifi passwords
@@ -138,7 +127,35 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         self.event_tree()
         self.event_table()
         self.event_table_keys()
+        self.event_table_settings()
         self.ui.wifi_run_import.clicked.connect(self.wifi_run_import_main)
+        self.ui.button_encrypt_file.clicked.connect(self.encrypt_file)
+        self.ui.button_decrypt_file.clicked.connect(self.decrypt_file)
+
+    def encrypt_file(self):
+        path_abs = filedialog.askopenfilename(
+            initialdir=self.passpy_obj.path_store,
+            title="Select file to encrypt",
+            filetypes=[("Any file type", "*.*")]
+        )
+        self.confirm(
+            lambda: self.passpy_obj.encrypt_file(path_abs, replace=True),
+            f"Encrypt File {os.path.basename(path_abs)} at {os.path.dirname(path_abs)}"
+        )
+
+    def decrypt_file(self):
+        self.passpy_obj.decrypt_file(
+            filedialog.askopenfilename(
+                initialdir=self.passpy_obj.path_store,
+                title="Select file to decrypt",
+                filetypes=[("Binary GPG file", "*.bgpg")]
+            ),
+            replace=True
+        )
+
+    def event_table_settings(self):
+        self.ui.table_settings.setContextMenuPolicy(PyQt5.QtCore.Qt.CustomContextMenu)
+        self.ui.table_settings.customContextMenuRequested.connect(self.context_menu_table_settings)
 
     def event_table_keys(self):
         self.ui.gpg_keys_table.setContextMenuPolicy(PyQt5.QtCore.Qt.CustomContextMenu)
@@ -256,6 +273,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         else:
             self.passpy_obj.config["settings"]["ignored_files"].append(rel_path)
         utils.write_config(self.passpy_obj.config)
+        self.load_config()
 
     def action_add_password_top(self, _):
         _, key = utils.new_incr(self.passpy_obj.path_store, "password", ".gpg")
@@ -287,6 +305,30 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
                 "date": datetime.datetime.now().strftime('%a %d %b %Y, %I:%M%p')
             }
         )
+
+    def context_menu_table_settings(self, position):
+        index = self.ui.gpg_keys_table.indexAt(position)
+        menu = PyQt5.QtWidgets.QMenu(self)
+        actions = []
+        if not index.isValid():
+            actions_bind = [
+                ["Reset all settings", self.action_reset_all_settings],
+            ]
+        else:
+            actions_bind = [
+                ["Reset selected settings", self.action_import_key],
+            ]
+            return
+        for action, func in actions_bind:
+            actions.append(menu.addAction(action))
+        action = menu.exec_(self.ui.gpg_keys_table.viewport().mapToGlobal(position))
+        for i, action_check in enumerate(actions):
+            if action == action_check:
+                actions_bind[i][1](index)
+
+    def action_reset_all_settings(self, _):
+        os.remove(utils.get_config_path())
+        self.restart_app()
 
     def context_menu_table_keys(self, position):
         index = self.ui.gpg_keys_table.indexAt(position)
@@ -330,6 +372,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
                 self.passpy_obj.config["settings"]["disabled_keys"].append(key)
         utils.write_config(self.passpy_obj.config)
         self.load_keys()
+        self.load_config()
 
     def action_enable_key(self, _):
         items = self.ui.gpg_keys_table.selectedItems()
@@ -339,6 +382,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
                 self.passpy_obj.config["settings"]["disabled_keys"].remove(key)
         utils.write_config(self.passpy_obj.config)
         self.load_keys()
+        self.load_config()
 
     def context_menu_table(self, position):
         index = self.ui.tableWidget.indexAt(position)

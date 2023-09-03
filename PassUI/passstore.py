@@ -14,8 +14,8 @@ class PassStore(gpg.GPG):
         self.check_path_store()
         self.check_ignored_files()
         self.check_ignored_folders()
-        self.overwrite_config()
         super().__init__(self.gpg_exe)
+        self.overwrite_config()
         self.write_gpg_ids()
 
     def check_ignored_files(self):
@@ -113,3 +113,21 @@ class PassStore(gpg.GPG):
         setattr(self, key, value)
         utils.write_config(self.config)
         return True
+
+    def encrypt_file(self, path_abs, replace=False):
+        self.encrypt(
+            path_abs + ".bgpg",
+            path_abs,
+            self.config["settings"]["disabled_keys"],
+            binary_file=True,
+        )
+        if replace:
+            os.remove(path_abs)
+
+    def decrypt_file(self, path_abs, replace=False):
+        self.decrypt(
+            path_abs,
+            path_abs[:-len(".bgpg")]
+        )
+        if replace:
+            os.remove(path_abs)

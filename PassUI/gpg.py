@@ -63,7 +63,6 @@ class GPG:
         filtered_header = "".join(str_list_keys.split("---------\n")[1:])
         str_keys = filtered_header.split("\n\n")[:-1]
         res = []
-        # print("GPG keys:")
         for i, str_key in enumerate(str_keys):
             try:
                 key_infos = {
@@ -75,9 +74,6 @@ class GPG:
                     "user": re.findall(r"(?<=\] )(.*)(?= <)", str_key)[0],
                     "expire": re.findall(r"[0-9]+-[0-9]+-[0-9]+", str_key)[-1],
                 }
-                # print(f"\tKEY {i}")
-                # for info, value in key_infos.items():
-                    # print(f"\t\t{info} = {value}")
                 res.append(key_infos)
             except IndexError:
                 print("_"*50+f"\nERROR key {i}\n{str_key}\n"+"_"*50)
@@ -131,7 +127,7 @@ class GPG:
                 key_id
             ])
 
-    def encrypt(self, path_abs_gpg, path_abs_file, disabled_keys=None):
+    def encrypt(self, path_abs_gpg, path_abs_file, disabled_keys=None, binary_file=False):
         if disabled_keys is None:
             disabled_keys = []
         recipients = []
@@ -143,7 +139,7 @@ class GPG:
         self.run([
             "--batch", "--yes",
             "--output", path_abs_gpg,
-            "--armor",
+            *(["--armor"] if not binary_file else []),
             "--encrypt",
             *recipients,
             path_abs_file
@@ -165,5 +161,12 @@ class GPG:
     def read(self, path_abs_gpg, passphrase=None):
         return self.run([
             *(["--pinentry-mode=loopback", "--passphrase", f"{passphrase}"] if passphrase is not None else []),
-            "--decrypt", path_abs_gpg
+            "--decrypt", path_abs_gpg,
+            *(),
+        ])
+
+    def decrypt(self, path_abs_source, path_abs_dest):
+        self.run([
+            "--output", path_abs_dest,
+            "--decrypt", path_abs_source,
         ])
