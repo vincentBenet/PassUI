@@ -7,11 +7,3 @@ settings:
     ignored_directories:
         - .git
     ignored_files: []
-    path_browser: C:/Program Files/Google/Chrome/Application/chrome.exe %s
-    
-wifi:
-    wifi_output_dir: wifi
-    wifi_password_command: netsh wlan show profile "%s" key=clear
-    wifi_password_regex_before: "    Contenu de la cl\xE9            : "
-    wifi_ssid_command: netsh wlan show profiles
-    wifi_ssid_regex_before: '    Profil Tous les utilisateurs    \xa0: '

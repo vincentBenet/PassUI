@@ -1,22 +1,17 @@
 import datetime
 import os
-import socket
 import sys
 import types
 import shutil
-import webbrowser
 from tkinter import filedialog, simpledialog
-
 import pyperclip
-import validators
-
 import PyQt5
 import PyQt5.uic
 import PyQt5.QtCore
 import PyQt5.QtWidgets
 from PyQt5 import Qt, QtGui
 from PyQt5.QtCore import Qt
-from PassUI import utils, wifi_extract
+from PassUI import utils
 
 """BUGS"""
 # TODO: import key trust level to 5
@@ -84,7 +79,6 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         self.load_tree()
         self.load_keys()
         self.load_config()
-        self.set_settings()
         self.events()
         self.show()
 
@@ -120,15 +114,11 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
                     item.setFont(f)
         self.ui.gpg_keys_table.horizontalHeader().setSectionResizeMode(PyQt5.QtWidgets.QHeaderView.ResizeToContents)
 
-    def set_settings(self):
-        self.ui.wifi_output_dir.setText(self.passpy_obj.wifi_output_dir)
-
     def events(self):
         self.event_tree()
         self.event_table()
         self.event_table_keys()
         self.event_table_settings()
-        self.ui.wifi_run_import.clicked.connect(self.wifi_run_import_main)
         self.ui.button_encrypt_file.clicked.connect(self.encrypt_file)
         self.ui.button_encrypt_directory.clicked.connect(self.encrypt_directory)
         self.ui.button_decrypt_file.clicked.connect(self.decrypt_file)
@@ -208,23 +198,6 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
     def restart_app(self):
         PyQt5.QtCore.QCoreApplication.quit()
         PyQt5.QtCore.QProcess.startDetached(sys.executable, sys.argv)
-
-    def wifi_run_import_main(self):
-        with Logger(self.ui.wifi_output_prompt):
-            wifi_passwords = wifi_extract.main(
-                regex_ssid_before=self.ui.wifi_ssid_regex_before.text(),
-                regex_ssid_after=self.ui.wifi_ssid_regex_after.text(),
-                regex_pass_before=self.ui.wifi_password_regex_before.text(),
-                regex_pass_after=self.ui.wifi_password_regex_after.text(),
-                command_ssid=self.ui.wifi_ssid_command.text(),
-                command_pass=self.ui.wifi_password_command.text(),
-            )
-        path_rel_directory_output = self.ui.wifi_output_dir.text()
-
-        [self.passpy_obj.write_key(
-            os.path.join(path_rel_directory_output, "wifi " + ssid),
-            {"PASSWORD": password, "SSID": ssid, "COMPUTER": socket.gethostname(), "description": ""}
-        ) for ssid, password in wifi_passwords.items()]
 
     def edit_settings(self):
         obj = self.sender()
@@ -339,7 +312,6 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             actions_bind = [
                 ["Reset selected settings", self.action_import_key],
             ]
-            return
         for action, func in actions_bind:
             actions.append(menu.addAction(action))
         action = menu.exec_(self.ui.gpg_keys_table.viewport().mapToGlobal(position))
@@ -654,14 +626,6 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         elif col == 1:
             info_key = self.ui.tableWidget.item(row, 0).text()
 
-            if info_key == "url" and validators.url(value):
-                try:
-                    webbrowser_user = webbrowser.get(self.passpy_obj.WEBBROWER_PATH)
-                    webbrowser_user.open(value, new=1, autoraise=True)
-                except webbrowser.Error:
-                    print(f"Fail to open with {self.passpy_obj.WEBBROWER_PATH}")
-                    webbrowser.open(value, new=1, autoraise=True)
-
     def on_item_tree_extend(self):
         self.ui.tableWidget.setRowCount(0)
         self.resize_tree()
@@ -745,12 +709,6 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         header.setSectionResizeMode(1, PyQt5.QtWidgets.QHeaderView.Stretch)
 
     def dragMoveEvent(self, event):
-        """
-        Validation during drap n drop action of possible drag action
-        :param self:
-        :param event:
-        :return:
-        """
         position = event.pos()
         item_at_position = self.ui.treeWidget.itemAt(position)
         if item_at_position is None:
@@ -776,7 +734,6 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         actual_item_text = actual_item.text(0)
         abs_path_dest = os.path.join(abs_path_dir_dest, actual_item_text + ".gpg")
         abs_path_source = self.get_abs_path(actual_item, folder=False)
-
         i = 0
         while os.path.isfile(abs_path_dest):
             i += 1
@@ -790,15 +747,12 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         if i > 0:
             actual_item.setText(0, os.path.basename(abs_path_dest)[:-len(".gpg")])
         parent_item = actual_item.parent()
-
         if parent_item is not None:
             parent_item.removeChild(actual_item)
         else:
             self.ui.treeWidget.takeTopLevelItem(self.ui.treeWidget.indexOfTopLevelItem(actual_item))
-
         if item_at_position is None:
             item_at_position = self.ui.treeWidget.invisibleRootItem()
-
         item_at_position.addChild(actual_item)
         event.setDropAction(Qt.IgnoreAction)
         event.accept()
