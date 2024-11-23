@@ -3,6 +3,7 @@ import re
 import sys
 import subprocess
 import tempfile
+import time
 from tkinter import filedialog
 
 
