@@ -1,3 +1,5 @@
+"""utils.py"""
+
 import os
 from pathlib import Path
 import yaml
@@ -69,21 +71,44 @@ def abs_to_rel_gpg(path_abs_store, path_abs):
 
 
 def rel_paths_gpg(path_abs_store, ignored_directories, ignored_files):
+    """Build a dictionary of GPG paths
+
+    Args:
+        path_abs_store: Base path to password store
+        ignored_directories: List of directories to ignore
+        ignored_files: List of files to ignore
+
+    Returns:
+        dict: Dictionary of paths
+    """
+    # Start with a fresh, empty result dictionary
     res = {}
+
+    # Convert ignored paths to absolute paths for comparison
     paths_ignored_directories = [
         os.path.join(path_abs_store, path_rel) for path_rel in ignored_directories]
     paths_ignored_files = [
         os.path.join(path_abs_store, path_rel) for path_rel in ignored_files]
+
+    # Create a flat structure first to avoid conflicts
+    file_entries = {}
+
+    # Walk through the directory structure
     for root, dirs, files in os.walk(path_abs_store):
+        # Skip ignored directories
         continue_ignored = False
-        for path_abs_ingored in paths_ignored_directories:
-            if root.startswith(path_abs_ingored):
+        for path_abs_ignored in paths_ignored_directories:
+            if root.startswith(path_abs_ignored):
                 continue_ignored = True
                 break
         if continue_ignored:
             continue
+
+        # Get relative path to current directory
         rel_path = abs_to_rel_gpg(path_abs_store, root)
-        if not len(rel_path):
+
+        # Handle files at root level
+        if not rel_path:
             for file in files:
                 if not file.endswith(".gpg"):
                     continue
@@ -92,19 +117,43 @@ def rel_paths_gpg(path_abs_store, ignored_directories, ignored_files):
                 passkey = file[:-len(".gpg")]
                 res[passkey] = passkey
             continue
-        dico = res
-        for key in rel_path.split(os.sep):
-            if key not in dico:
-                dico[key] = {}
-            dico = dico[key]
+
+        # Process .gpg files in current directory
         for file in files:
             if not file.endswith(".gpg"):
                 continue
             if os.path.join(root, file) in paths_ignored_files:
                 continue
+
             passkey = file[:-len(".gpg")]
-            key_rel_path = os.path.join(rel_path, passkey)
-            dico[passkey] = key_rel_path
+            full_rel_path = os.path.join(rel_path, passkey)
+
+            # Store path components and the full path for later processing
+            path_parts = rel_path.split(os.sep)
+            file_entries[full_rel_path] = {
+                'path_parts': path_parts,
+                'passkey': passkey
+            }
+
+    # Now build the nested structure from our flat entries
+    for full_path, entry in file_entries.items():
+        path_parts = entry['path_parts']
+        passkey = entry['passkey']
+
+        # Build directory structure
+        current = res
+        for part in path_parts:
+            if part not in current:
+                current[part] = {}
+            if not isinstance(current[part], dict):
+                # Skip if we encounter a file key instead of a directory
+                break
+            current = current[part]
+
+        # Only add file if we successfully navigated to its directory
+        if isinstance(current, dict):
+            current[passkey] = full_path
+
     return res
 
 
