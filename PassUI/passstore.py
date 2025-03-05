@@ -15,7 +15,7 @@ class PassStore(gpg.GPG):
         self.check_path_store()
         self.check_ignored_files()
         self.check_ignored_folders()
-        super().__init__(self.gpg_exe)
+        super().__init__()
         self.overwrite_config()
         self.write_gpg_ids()
 
@@ -89,7 +89,24 @@ class PassStore(gpg.GPG):
         )
 
     def read_key(self, path_rel):
-        return utils.data_str_to_dict(self.read(utils.rel_to_abs(self.path_store, path_rel)))
+        from PyQt5.QtWidgets import QInputDialog, QLineEdit
+        passphrase, ok = QInputDialog.getText(
+            None,  # Parent widget (None for a standalone dialog)
+            "Passphrase Required",  # Dialog title
+            "Enter the passphrase for this key:",  # Dialog message
+            QLineEdit.Password,  # Use password field that masks input
+            ""  # Default text
+        )
+        if ok:
+            return utils.data_str_to_dict(
+                self.read(
+                    utils.rel_to_abs(self.path_store, path_rel),
+                    passphrase=passphrase,
+                )
+            )
+        else:
+            # User canceled the dialog
+            raise ValueError("Passphrase entry canceled by user")
 
     def write_key(self, path_rel, data_dict):
         data_str = utils.data_dict_to_str(data_dict)
