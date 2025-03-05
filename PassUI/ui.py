@@ -4,13 +4,12 @@ This module provides the user interface for the PassUI password manager applicat
 It handles the GUI using PyQt5.
 """
 
-
 import datetime
 import os
 import sys
 import types
 import shutil
-from tkinter import filedialog, simpledialog
+from tkinter import filedialog
 import pyperclip
 import yaml
 from pathlib import Path
@@ -70,6 +69,47 @@ def get_rel_path(item, file=False):
     return os.sep.join([parent.text(0) for parent in parents])
 
 
+def get_parent_path(item):
+    """Get the parent path for a tree item
+
+    Args:
+        item: Tree widget item
+
+    Returns:
+        str: Parent path, empty string if root
+    """
+    path_parts = []
+    parent = item.parent()
+
+    while parent is not None:
+        path_parts.insert(0, parent.text(0))
+        parent = parent.parent()
+
+    return os.path.join(*path_parts) if path_parts else ""
+
+
+def get_full_tree_path(item):
+    """Get the full path of a tree item by traversing parents
+
+    Args:
+        item: The tree widget item
+
+    Returns:
+        str: Full path with separators
+    """
+    if item is None:
+        return ""
+
+    parts = [item.text(0)]
+    parent = item.parent()
+
+    while parent is not None:
+        parts.insert(0, parent.text(0))
+        parent = parent.parent()
+
+    return os.sep.join(parts)
+
+
 class PassUI(PyQt5.QtWidgets.QMainWindow):
     """Main UI class for PassUI password manager"""
 
@@ -123,6 +163,640 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             import traceback
             error_message = f"{str(e)}\n\nStack trace:\n{traceback.format_exc()}"
             self.show_error("Initialization Error", error_message)
+
+    def action_rename_item(self, item):
+        """Rename a password or folder with a simpler, more robust approach
+
+        Args:
+            item: Tree widget item to rename
+        """
+        try:
+            # Store the current item and name for reference
+            self.clicked_item = item
+            self.clicked_key = item.text(0)
+
+            # Store the full path
+            self.clicked_full_path = get_full_tree_path(item)
+
+            # Get current name and path
+            current_name = item.text(0)
+            parent_path = get_parent_path(item)
+
+            # Log full paths for debugging
+            source_file_path = os.path.join(self.passpy_obj.path_store, parent_path, f"{current_name}.gpg")
+            source_dir_path = os.path.join(self.passpy_obj.path_store, parent_path, current_name)
+
+            print(f"Debug - Rename operation:")
+            print(f"  Current name: {current_name}")
+            print(f"  Parent path: {parent_path}")
+            print(f"  Full path: {self.clicked_full_path}")
+            print(f"  Source file path: {source_file_path} (exists: {os.path.isfile(source_file_path)})")
+            print(f"  Source dir path: {source_dir_path} (exists: {os.path.isdir(source_dir_path)})")
+
+            # Determine if item is file or folder
+            is_file = os.path.isfile(source_file_path)
+            is_folder = os.path.isdir(source_dir_path)
+
+            if not is_file and not is_folder:
+                self.show_error("Item Not Found",
+                                f"Cannot find the item '{current_name}' in the password store.\n"
+                                f"Checked file path: {source_file_path}\n"
+                                f"Checked folder path: {source_dir_path}")
+                return
+
+            item_type = "password" if is_file else "folder"
+
+            # Get new name from user
+            new_name, ok = PyQt5.QtWidgets.QInputDialog.getText(
+                self, f'Rename {item_type}', f'Enter new name for {current_name}:',
+                text=current_name
+            )
+
+            if not ok or not new_name or new_name == current_name:
+                return  # User cancelled or didn't change name
+
+            # Build source and target paths
+            source_path = source_file_path if is_file else source_dir_path
+            target_path = os.path.join(self.passpy_obj.path_store, parent_path,
+                                       f"{new_name}.gpg" if is_file else new_name)
+
+            # Log target paths for debugging
+            print(f"  Target path: {target_path} (exists: {os.path.exists(target_path)})")
+
+            # Check if target already exists
+            if os.path.exists(target_path):
+                # If we're trying to rename to a name that already exists
+                self.show_error("Cannot Rename",
+                                f"A {item_type} with name '{new_name}' already exists at {os.path.dirname(target_path)}.")
+                return
+
+            # Double check source exists before attempting rename
+            if not os.path.exists(source_path):
+                self.show_error("Source Not Found",
+                                f"Cannot find the source {item_type} at {source_path}.")
+                return
+
+            try:
+                # Perform the rename with explicit error handling
+                print(f"  Renaming from {source_path} to {target_path}")
+                os.rename(source_path, target_path)
+            except PermissionError:
+                self.show_error("Permission Denied",
+                                f"You don't have permission to rename this {item_type}. "
+                                f"Check if the file is in use by another program.")
+                return
+            except FileNotFoundError:
+                self.show_error("File Not Found",
+                                f"The source {item_type} no longer exists at {source_path}.")
+                return
+            except FileExistsError:
+                self.show_error("File Exists",
+                                f"A {item_type} with name '{new_name}' already exists.")
+                return
+            except OSError as e:
+                self.show_error("Operating System Error",
+                                f"Failed to rename: {str(e)}")
+                return
+
+            # Update the tree item
+            self.in_dupplicate = True  # Prevent triggering rename handler
+            item.setText(0, new_name)
+            self.in_dupplicate = False
+
+            # Store updated values
+            self.clicked_item = item
+            self.clicked_key = new_name
+
+            # Update the full path
+            if self.clicked_full_path:
+                parts = self.clicked_full_path.split(os.sep)
+                if parts:
+                    parts[-1] = new_name
+                    self.clicked_full_path = os.sep.join(parts)
+
+            # Successfully renamed
+            self.show_info("Renamed", f"{item_type.capitalize()} successfully renamed to '{new_name}'")
+
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            self.show_error("Error renaming item", f"{str(e)}\n\nDetails:\n{error_details}")
+
+    def action_add_password(self, item):
+        """Add a new password to a folder with simplified approach
+
+        Args:
+            item: Parent folder tree item
+        """
+        try:
+            # Get folder path
+            parent_path = get_parent_path(item)
+            folder_name = item.text(0)
+            folder_path = os.path.join(self.passpy_obj.path_store, parent_path, folder_name)
+
+            # Verify it's a folder
+            if not os.path.isdir(folder_path):
+                self.show_error("Invalid Location", "Selected item is not a folder.")
+                return
+
+            # Get password name from user
+            name, ok = PyQt5.QtWidgets.QInputDialog.getText(
+                self, 'New Password', f'Enter name for new password in {folder_name}:',
+                text="password"
+            )
+
+            if not ok or not name:
+                return  # User cancelled or entered empty name
+
+            # Check if password already exists
+            password_path = os.path.join(folder_path, f"{name}.gpg")
+            if os.path.exists(password_path):
+                # Find unique name by adding number
+                base_name = name
+                counter = 1
+                while os.path.exists(password_path):
+                    name = f"{base_name}_{counter}"
+                    password_path = os.path.join(folder_path, f"{name}.gpg")
+                    counter += 1
+
+                self.show_info("Name Modified",
+                               f"A password named '{base_name}' already exists. Creating '{name}' instead.")
+
+            # Create relative path for the password store
+            rel_path = os.path.join(parent_path, folder_name, name) if parent_path else os.path.join(folder_name, name)
+
+            # Create password entry
+            password_data = {
+                "PASSWORD": "",
+                "url": "",
+                "user": "",
+                "mail": "",
+                "date": datetime.datetime.now().strftime('%a %d %b %Y, %I:%M%p')
+            }
+
+            # Write password to store
+            if not self.passpy_obj.write_key(rel_path, password_data):
+                self.show_error("Error", "Failed to create password file.")
+                return
+
+            # Create tree item
+            child = PyQt5.QtWidgets.QTreeWidgetItem()
+            child.setText(0, name)
+            child.setFlags(child.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
+
+            # Add to parent
+            item.addChild(child)
+
+            # Expand parent and select new item
+            item.setExpanded(True)
+            self.ui.treeWidget.setCurrentItem(child)
+            self.clicked_item = child
+            self.clicked_key = name
+
+        except Exception as e:
+            self.show_error("Error adding password", str(e))
+
+    def action_add_password_top(self, _):
+        """Add a new password at the root level
+
+        Args:
+            _: Unused parameter (sender)
+        """
+        try:
+            # Get password name from user
+            name, ok = PyQt5.QtWidgets.QInputDialog.getText(
+                self, 'New Password', 'Enter name for the new password:',
+                text="password"
+            )
+
+            if not ok or not name:
+                return  # User cancelled or entered empty name
+
+            # Check if password already exists
+            password_path = os.path.join(self.passpy_obj.path_store, f"{name}.gpg")
+            if os.path.exists(password_path):
+                self.show_error("Cannot Create", f"A password named '{name}' already exists at root level.")
+                return
+
+            # Create password entry
+            password_data = {
+                "PASSWORD": "",
+                "url": "",
+                "user": "",
+                "mail": "",
+                "date": datetime.datetime.now().strftime('%a %d %b %Y, %I:%M%p')
+            }
+
+            # Write password to store
+            if not self.passpy_obj.write_key(name, password_data):
+                self.show_error("Error", "Failed to create password file.")
+                return
+
+            # Create tree item
+            child = PyQt5.QtWidgets.QTreeWidgetItem()
+            child.setText(0, name)
+            child.setFlags(child.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
+
+            # Add to root
+            self.ui.treeWidget.invisibleRootItem().addChild(child)
+
+            # Select new item
+            self.ui.treeWidget.setCurrentItem(child)
+            self.clicked_item = child
+            self.clicked_key = name
+
+        except Exception as e:
+            self.show_error("Error adding password", str(e))
+
+    def action_add_folder(self, item):
+        """Add a new subfolder with simpler implementation
+
+        Args:
+            item: Parent folder tree item
+        """
+        try:
+            # Get folder path
+            parent_path = get_parent_path(item)
+            folder_name = item.text(0)
+            folder_path = os.path.join(self.passpy_obj.path_store, parent_path, folder_name)
+
+            # Verify it's a folder
+            if not os.path.isdir(folder_path):
+                self.show_error("Invalid Location", "Selected item is not a folder.")
+                return
+
+            # Get subfolder name from user
+            name, ok = PyQt5.QtWidgets.QInputDialog.getText(
+                self, 'New Folder', f'Enter name for new folder in {folder_name}:',
+                text="folder"
+            )
+
+            if not ok or not name:
+                return  # User cancelled or entered empty name
+
+            # Check if folder already exists
+            new_folder_path = os.path.join(folder_path, name)
+            if os.path.exists(new_folder_path):
+                self.show_error("Cannot Create", f"A folder named '{name}' already exists in this location.")
+                return
+
+            # Create folder
+            os.makedirs(new_folder_path, exist_ok=False)
+
+            # Create tree item
+            child = PyQt5.QtWidgets.QTreeWidgetItem()
+            child.setText(0, name)
+            child.setFlags(child.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
+
+            # Add to parent
+            item.addChild(child)
+
+            # Expand parent and select new item
+            item.setExpanded(True)
+            self.ui.treeWidget.setCurrentItem(child)
+
+        except Exception as e:
+            self.show_error("Error adding folder", str(e))
+
+    def action_add_folder_top(self, _):
+        """Add a new folder at the root level
+
+        Args:
+            _: Unused parameter (sender)
+        """
+        try:
+            # Get folder name from user
+            name, ok = PyQt5.QtWidgets.QInputDialog.getText(
+                self, 'New Folder', 'Enter name for the new folder:',
+                text="folder"
+            )
+
+            if not ok or not name:
+                return  # User cancelled or entered empty name
+
+            # Check if folder already exists
+            folder_path = os.path.join(self.passpy_obj.path_store, name)
+            if os.path.exists(folder_path):
+                self.show_error("Cannot Create", f"A folder named '{name}' already exists at root level.")
+                return
+
+            # Create folder
+            os.makedirs(folder_path, exist_ok=False)
+
+            # Create tree item
+            child = PyQt5.QtWidgets.QTreeWidgetItem()
+            child.setText(0, name)
+            child.setFlags(child.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
+
+            # Add to root
+            self.ui.treeWidget.invisibleRootItem().addChild(child)
+
+            # Select new item
+            self.ui.treeWidget.setCurrentItem(child)
+
+        except Exception as e:
+            self.show_error("Error adding folder", str(e))
+
+    def action_dupplicate(self, item):
+        """Duplicate a password file with simplified implementation
+
+        Args:
+            item: Password tree item to duplicate
+        """
+        try:
+            # Get source file path
+            parent_path = get_parent_path(item)
+            file_name = item.text(0)
+            source_path = os.path.join(self.passpy_obj.path_store, parent_path, f"{file_name}.gpg")
+
+            # Verify it's a file
+            if not os.path.isfile(source_path):
+                self.show_error("Invalid Item", "Selected item is not a password file.")
+                return
+
+            # Generate new name
+            base_name = file_name
+            # Check if name already has a numeric suffix
+            if "_" in file_name:
+                parts = file_name.split("_")
+                if parts[-1].isdigit():
+                    base_name = "_".join(parts[:-1])
+
+            # Find unique name
+            counter = 1
+            while True:
+                new_name = f"{base_name}_{counter}"
+                target_path = os.path.join(self.passpy_obj.path_store, parent_path, f"{new_name}.gpg")
+
+                if not os.path.exists(target_path):
+                    break
+
+                counter += 1
+
+            # Copy the file
+            shutil.copy(source_path, target_path)
+
+            # Create tree item
+            child = PyQt5.QtWidgets.QTreeWidgetItem()
+            child.setText(0, new_name)
+            child.setFlags(child.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
+
+            # Add to parent (same as original)
+            parent = item.parent()
+            if parent is None:
+                self.ui.treeWidget.invisibleRootItem().addChild(child)
+            else:
+                parent.addChild(child)
+
+            # Select new item
+            self.ui.treeWidget.setCurrentItem(child)
+            self.clicked_item = child
+            self.clicked_key = new_name
+
+        except Exception as e:
+            self.show_error("Error duplicating password", str(e))
+
+    def on_item_tree_changed(self, item, column):
+        """Handle rename operations when tree item text is edited
+
+        Args:
+            item: Tree item being changed
+            column: Column index (always 0 for our tree)
+        """
+        try:
+            # Skip processing if we're programmatically changing items
+            if self.in_dupplicate:
+                return
+
+            # Get current and new names
+            new_name = item.text(0)
+            if not hasattr(self, 'clicked_key') or self.clicked_key is None:
+                # If we don't have a previous key stored, nothing to rename
+                print("Warning: No clicked_key stored, can't perform rename operation")
+                return
+
+            old_name = self.clicked_key
+
+            # Don't proceed if name hasn't changed
+            if old_name == new_name:
+                return
+
+            # Get parent path
+            parent_path = get_parent_path(item)
+
+            # Log debug info
+            print(f"Debug - Tree item changed:")
+            print(f"  Old name: {old_name}")
+            print(f"  New name: {new_name}")
+            print(f"  Parent path: {parent_path}")
+
+            # Build source and target paths for both file and folder scenarios
+            source_file_path = os.path.join(self.passpy_obj.path_store, parent_path, f"{old_name}.gpg")
+            source_folder_path = os.path.join(self.passpy_obj.path_store, parent_path, old_name)
+
+            target_file_path = os.path.join(self.passpy_obj.path_store, parent_path, f"{new_name}.gpg")
+            target_folder_path = os.path.join(self.passpy_obj.path_store, parent_path, new_name)
+
+            # Additional debug info
+            print(f"  Source file path: {source_file_path} (exists: {os.path.isfile(source_file_path)})")
+            print(f"  Source folder path: {source_folder_path} (exists: {os.path.isdir(source_folder_path)})")
+            print(f"  Target file path: {target_file_path} (exists: {os.path.exists(target_file_path)})")
+            print(f"  Target folder path: {target_folder_path} (exists: {os.path.exists(target_folder_path)})")
+
+            # Check if target already exists
+            if os.path.exists(target_file_path) or os.path.exists(target_folder_path):
+                # Revert name change
+                self.in_dupplicate = True
+                item.setText(0, old_name)
+                self.in_dupplicate = False
+
+                self.show_error("Cannot Rename",
+                                f"An item named '{new_name}' already exists in this location. "
+                                f"Please choose a different name.")
+                return
+
+            try:
+                # Perform rename based on item type
+                if os.path.isfile(source_file_path):
+                    # It's a password file
+                    print(f"  Renaming file from {source_file_path} to {target_file_path}")
+                    os.rename(source_file_path, target_file_path)
+
+                    # CRITICAL: Update the clicked_key to match the new name
+                    self.clicked_key = new_name
+
+                    # If we're tracking the full path, update that too
+                    if hasattr(self, 'clicked_full_path') and self.clicked_full_path:
+                        parts = self.clicked_full_path.split(os.sep)
+                        if parts:
+                            parts[-1] = new_name
+                            self.clicked_full_path = os.sep.join(parts)
+
+                    print(f"  File renamed successfully")
+
+                elif os.path.isdir(source_folder_path):
+                    # It's a folder
+                    print(f"  Renaming folder from {source_folder_path} to {target_folder_path}")
+                    os.rename(source_folder_path, target_folder_path)
+
+                    # CRITICAL: Update the clicked_key to match the new name
+                    self.clicked_key = new_name
+
+                    # If we're tracking the full path, update that too
+                    if hasattr(self, 'clicked_full_path') and self.clicked_full_path:
+                        parts = self.clicked_full_path.split(os.sep)
+                        if parts:
+                            parts[-1] = new_name
+                            self.clicked_full_path = os.sep.join(parts)
+
+                    print(f"  Folder renamed successfully")
+
+                else:
+                    # Item doesn't exist in filesystem
+                    self.show_error("Item Not Found",
+                                    f"Could not find {old_name} in the password store.\n"
+                                    f"Checked file: {source_file_path}\n"
+                                    f"Checked folder: {source_folder_path}")
+
+                    # Revert name change
+                    self.in_dupplicate = True
+                    item.setText(0, old_name)
+                    self.in_dupplicate = False
+                    return
+
+            except PermissionError:
+                # Revert name change
+                self.in_dupplicate = True
+                item.setText(0, old_name)
+                self.in_dupplicate = False
+
+                self.show_error("Permission Denied",
+                                "You don't have permission to rename this item. "
+                                "Check if the file is in use by another program.")
+                return
+            except FileNotFoundError:
+                # Revert name change
+                self.in_dupplicate = True
+                item.setText(0, old_name)
+                self.in_dupplicate = False
+
+                self.show_error("File Not Found",
+                                f"The source item no longer exists at {source_file_path} or {source_folder_path}.")
+                return
+            except OSError as e:
+                # Revert name change
+                self.in_dupplicate = True
+                item.setText(0, old_name)
+                self.in_dupplicate = False
+
+                self.show_error("Operating System Error", f"Failed to rename: {str(e)}")
+                return
+
+        except Exception as e:
+            # Revert name change on error
+            self.in_dupplicate = True
+            item.setText(0, self.clicked_key if hasattr(self, 'clicked_key') else item.text(0))
+            self.in_dupplicate = False
+
+            import traceback
+            error_details = traceback.format_exc()
+            self.show_error("Error renaming item", f"{str(e)}\n\nDetails:\n{error_details}")
+
+    def dropEvent(self, event):
+        """Handle moving items via drag and drop
+
+        Args:
+            event: Drop event
+        """
+        try:
+            # Prevent recursive change events
+            self.in_dupplicate = True
+
+            # Get drop target
+            position = event.pos()
+            target_item = self.ui.treeWidget.itemAt(position)
+
+            # Get source item
+            source_item = self.ui.treeWidget.currentItem()
+            if source_item is None:
+                self.in_dupplicate = False
+                event.ignore()
+                return
+
+            # Get source and target paths
+            source_name = source_item.text(0)
+            source_parent_path = get_parent_path(source_item)
+
+            # For target, use target item if it's a folder, otherwise use its parent
+            if target_item is None:
+                # Dropping at root level
+                target_path = ""
+            else:
+                target_folder = os.path.join(self.passpy_obj.path_store, get_parent_path(target_item),
+                                             target_item.text(0))
+                if os.path.isdir(target_folder):
+                    # Target is a folder
+                    target_path = os.path.join(get_parent_path(target_item), target_item.text(0))
+                else:
+                    # Target is a file, move to its parent folder
+                    target_path = get_parent_path(target_item)
+                    target_item = target_item.parent()
+
+            # Build source and destination file paths
+            source_file_path = os.path.join(self.passpy_obj.path_store, source_parent_path, f"{source_name}.gpg")
+            dest_file_path = os.path.join(self.passpy_obj.path_store, target_path, f"{source_name}.gpg")
+
+            # Verify source exists and is a file
+            if not os.path.isfile(source_file_path):
+                self.show_error("Invalid Item", "Only password files can be moved.")
+                self.in_dupplicate = False
+                event.ignore()
+                return
+
+            # Check if destination already exists
+            if os.path.exists(dest_file_path):
+                # Generate unique name
+                base_name = source_name
+                counter = 1
+
+                new_name = f"{base_name}_{counter}"
+                while os.path.exists(dest_file_path):
+                    new_name = f"{base_name}_{counter}"
+                    dest_file_path = os.path.join(self.passpy_obj.path_store, target_path, f"{new_name}.gpg")
+                    counter += 1
+
+                # Update item name
+                source_name = new_name
+                source_item.setText(0, source_name)
+
+            # Create destination directory if needed
+            os.makedirs(os.path.dirname(dest_file_path), exist_ok=True)
+
+            # Move the file
+            shutil.move(source_file_path, dest_file_path)
+
+            # Remove from old parent in tree
+            old_parent = source_item.parent()
+            if old_parent is None:
+                self.ui.treeWidget.takeTopLevelItem(self.ui.treeWidget.indexOfTopLevelItem(source_item))
+            else:
+                old_parent.removeChild(source_item)
+
+            # Add to new parent in tree
+            if target_item is None:
+                self.ui.treeWidget.invisibleRootItem().addChild(source_item)
+            else:
+                target_item.addChild(source_item)
+                target_item.setExpanded(True)
+
+            # Accept the event
+            event.accept()
+
+        except Exception as e:
+            self.show_error("Error moving item", str(e))
+            event.ignore()
+        finally:
+            self.in_dupplicate = False
 
     def setup_events(self):
         """Set up all event handlers with explicit error handling"""
@@ -480,7 +1154,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
 
     @PyQt5.QtCore.pyqtSlot(PyQt5.QtWidgets.QTreeWidgetItem, int)
     def on_item_tree_changed(self, item, _):
-        """Tree item changed event handler"""
+        """Tree item changed event handler with full path support"""
         try:
             # Skip if in duplicate mode
             if self.in_dupplicate:
@@ -491,27 +1165,39 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
 
             # If no clicked item or key, nothing to do
             if self.clicked_item is None or self.clicked_key is None:
+                print("Warning: No clicked item or key when handling tree item change")
                 return
 
             # Don't do anything if the name hasn't changed
             if new_name == self.clicked_key:
                 return
 
-            # Get absolute paths for the item's location
-            current_abs_path = self.get_abs_path(item)
-            current_dir = os.path.dirname(current_abs_path)
+            # Use the stored full path instead of just the item name
+            if not hasattr(self, 'clicked_full_path') or not self.clicked_full_path:
+                print("Warning: No full path stored for this item")
+                self.clicked_full_path = get_full_tree_path(item)
 
-            # Build possible source paths
-            source_file_path = os.path.join(current_dir, f"{self.clicked_key}.gpg")
-            source_dir_path = os.path.join(current_dir, self.clicked_key)
+            # Get the parent path by removing the last component
+            parent_path = os.path.dirname(self.clicked_full_path)
 
-            # Target paths
-            target_file_path = os.path.join(current_dir, f"{new_name}.gpg")
-            target_dir_path = os.path.join(current_dir, new_name)
+            # Build source and target paths using the parent path
+            if parent_path:
+                source_file_path = os.path.join(self.passpy_obj.path_store, parent_path, f"{self.clicked_key}.gpg")
+                source_dir_path = os.path.join(self.passpy_obj.path_store, parent_path, self.clicked_key)
+                target_file_path = os.path.join(self.passpy_obj.path_store, parent_path, f"{new_name}.gpg")
+                target_dir_path = os.path.join(self.passpy_obj.path_store, parent_path, new_name)
+            else:
+                # Root level
+                source_file_path = os.path.join(self.passpy_obj.path_store, f"{self.clicked_key}.gpg")
+                source_dir_path = os.path.join(self.passpy_obj.path_store, self.clicked_key)
+                target_file_path = os.path.join(self.passpy_obj.path_store, f"{new_name}.gpg")
+                target_dir_path = os.path.join(self.passpy_obj.path_store, new_name)
 
             # Print debug information
             print(f"Rename operation:")
             print(f"  Clicked key: {self.clicked_key}")
+            print(f"  Full path: {self.clicked_full_path}")
+            print(f"  Parent path: {parent_path}")
             print(f"  New name: {new_name}")
             print(f"  Source file path: {source_file_path} (exists: {os.path.isfile(source_file_path)})")
             print(f"  Source dir path: {source_dir_path} (exists: {os.path.isdir(source_dir_path)})")
@@ -520,38 +1206,51 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
 
             renamed = False
 
+            # Check if destination already exists
+            if os.path.exists(target_file_path) or os.path.exists(target_dir_path):
+                # Revert the rename in the UI
+                self.in_dupplicate = True
+                item.setText(0, self.clicked_key)
+                self.in_dupplicate = False
+
+                # Show error
+                item_type = "file" if os.path.isfile(source_file_path) else "folder"
+                self.show_error("Rename Error",
+                                f"A {item_type} with the name '{new_name}' already exists.")
+                return
+
             # First check if we're dealing with a file
             if os.path.isfile(source_file_path):
                 # It's a file
-                if os.path.exists(target_file_path):
-                    raise FileExistsError(f"A file with the name '{new_name}' already exists.")
-
                 os.rename(source_file_path, target_file_path)
+                # Update the stored path
+                if parent_path:
+                    self.clicked_full_path = os.path.join(parent_path, new_name)
+                else:
+                    self.clicked_full_path = new_name
                 self.clicked_key = new_name
                 renamed = True
 
             # Then check if it's a directory
             elif os.path.isdir(source_dir_path):
                 # It's a directory
-                if os.path.exists(target_dir_path):
-                    raise FileExistsError(f"A folder with the name '{new_name}' already exists.")
-
                 os.rename(source_dir_path, target_dir_path)
+                # Update the stored path
+                if parent_path:
+                    self.clicked_full_path = os.path.join(parent_path, new_name)
+                else:
+                    self.clicked_full_path = new_name
                 self.clicked_key = new_name
                 renamed = True
 
             # If we got here and nothing was renamed, handle the error
             if not renamed:
-                print(f"WARNING: Could not find item '{self.clicked_key}' to rename")
+                print(f"WARNING: Could not find item '{self.clicked_key}' at path '{self.clicked_full_path}' to rename")
 
                 # Revert the item text to the original clicked key
                 self.in_dupplicate = True  # Prevent triggering this handler again
                 item.setText(0, self.clicked_key)
                 self.in_dupplicate = False
-
-                # Don't show error message every time - it can create an annoying loop
-                # Instead just log to console and return
-                return
 
         except Exception as e:
             print(f"Error in on_item_tree_changed: {str(e)}")
@@ -561,9 +1260,8 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             item.setText(0, self.clicked_key)
             self.in_dupplicate = False
 
-            # Show error dialog if it's a FileExistsError, as this is an actionable error
-            if isinstance(e, FileExistsError):
-                self.show_error("Rename Error", str(e))
+            # Show error dialog
+            self.show_error("Rename Error", str(e))
 
     def context_menu_tree(self, position):
         """Tree context menu handler"""
@@ -659,206 +1357,10 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         except Exception as e:
             self.show_error("Error updating ignored files", str(e))
 
-    def action_rename_item(self, item):
-        """Rename a password or folder item
-
-        Args:
-            item: The tree item to rename
-        """
-        try:
-            # Store original name for file operations
-            old_name = item.text(0)
-
-            # Check if this is a file or folder
-            is_file = os.path.isfile(self.get_abs_path(item))
-            item_type = "password" if is_file else "folder"
-
-            # Get input from user
-            new_name, ok = PyQt5.QtWidgets.QInputDialog.getText(
-                self,
-                f'Rename {item_type}',
-                f'Enter new name for {old_name}:',
-                text=old_name
-            )
-
-            if not ok or not new_name or new_name == old_name:
-                return  # User cancelled or didn't change name
-
-            # Get paths
-            parent_path = get_rel_path(item)
-
-            if is_file:
-                # For password files
-                old_path = os.path.join(self.passpy_obj.path_store, parent_path, old_name + ".gpg")
-                new_path = os.path.join(self.passpy_obj.path_store, parent_path, new_name + ".gpg")
-            else:
-                # For folders
-                old_path = os.path.join(self.passpy_obj.path_store, parent_path, old_name)
-                new_path = os.path.join(self.passpy_obj.path_store, parent_path, new_name)
-
-            # Debug output
-            print(f"Rename operation from action_rename_item:")
-            print(f"  Old name: {old_name}")
-            print(f"  New name: {new_name}")
-            print(f"  Old path: {old_path} (exists: {os.path.exists(old_path)})")
-            print(f"  New path: {new_path} (exists: {os.path.exists(new_path)})")
-
-            # Check if target already exists
-            if os.path.exists(new_path):
-                self.show_error(
-                    "Cannot Rename",
-                    f"A {item_type} with name '{new_name}' already exists in this location."
-                )
-                return
-
-            # Perform the rename operation
-            os.rename(old_path, new_path)
-
-            # Update the tree item with the in_dupplicate flag set to prevent triggering change events
-            self.in_dupplicate = True
-            item.setText(0, new_name)
-            self.in_dupplicate = False
-
-            # Store the new name for reference
-            self.clicked_item = item
-            self.clicked_key = new_name
-
-            # Show success message
-            self.show_info("Renamed", f"{item_type.capitalize()} successfully renamed to '{new_name}'")
-
-        except Exception as e:
-            self.show_error("Error renaming item", str(e))
-
-    def action_add_password_top(self, _):
-        """Add password at root level with user-specified name"""
-        try:
-            # Prompt the user for a password name
-            name, ok = PyQt5.QtWidgets.QInputDialog.getText(
-                self,
-                'New Password',
-                'Enter name for the new password:',
-                text="password"  # Default suggestion
-            )
-
-            if not ok or not name:
-                return  # User cancelled or entered empty name
-
-            # Check if the name already exists at root level
-            file_path = os.path.join(self.passpy_obj.path_store, f"{name}.gpg")
-            if os.path.exists(file_path):
-                self.show_error("Cannot Create Password", f"A password named '{name}' already exists.")
-                return
-
-            # Create tree item
-            child = PyQt5.QtWidgets.QTreeWidgetItem()
-            child.setText(0, name)
-            self.ui.treeWidget.invisibleRootItem().addChild(child)
-
-            # Create the password file with an empty string instead of adding to name
-            result = self.passpy_obj.write_key(
-                name,  # Just pass the name, not trying to modify it
-                {
-                    "PASSWORD": "",
-                    "url": "",
-                    "user": "",
-                    "mail": "",
-                    "date": datetime.datetime.now().strftime('%a %d %b %Y, %I:%M%p')
-                }
-            )
-
-            # Make item editable
-            child.setFlags(child.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
-
-            # Select the new item
-            self.ui.treeWidget.setCurrentItem(child)
-
-        except Exception as e:
-            self.show_error("Error adding password", str(e))
-
-    # Fix for action_add_password
-    def action_add_password(self, item):
-        """Add password to folder with user-specified name"""
-        try:
-            # Get folder path
-            folder_path = self.get_abs_path(item, folder=True)
-
-            # Prompt the user for a password name
-            name, ok = PyQt5.QtWidgets.QInputDialog.getText(
-                self,
-                'New Password',
-                f'Enter name for the new password in {item.text(0)}:',
-                text="password"  # Default suggestion
-            )
-
-            if not ok or not name:
-                return  # User cancelled or entered empty name
-
-            # Check if the name already exists in this folder
-            file_path = os.path.join(folder_path, f"{name}.gpg")
-            if os.path.exists(file_path):
-                self.show_error("Cannot Create Password", f"A password named '{name}' already exists in this folder.")
-                return
-
-            # Set duplicate flag to prevent triggering change events
-            self.in_dupplicate = True
-
-            # Create the relative path correctly
-            rel_path = os.path.join(get_rel_path(item), item.text(0), name)
-
-            # Create password file with default values
-            result = self.passpy_obj.write_key(
-                rel_path,  # Pass the complete path
-                {
-                    "PASSWORD": "",
-                    "url": "",
-                    "user": "",
-                    "mail": "",
-                    "date": datetime.datetime.now().strftime('%a %d %b %Y, %I:%M%p')
-                }
-            )
-
-            if result:
-                # Add to tree
-                child = PyQt5.QtWidgets.QTreeWidgetItem()
-                child.setText(0, name)
-                parent = item
-                parent.addChild(child)
-                child.setFlags(child.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
-
-                # Expand the parent item to show the new child
-                parent.setExpanded(True)
-
-                # Select the new item
-                self.ui.treeWidget.setCurrentItem(child)
-
-                # Resize tree to accommodate new item
-                self.resize_tree()
-
-            self.in_dupplicate = False
-        except Exception as e:
-            self.in_dupplicate = False
-            self.show_error("Error adding password", str(e))
-
     # You should also fix the add_password_file method:
     def add_password_file(self, rel_path):
         """Create a new password file"""
-        try:
-            return self.passpy_obj.write_key(
-                rel_path,
-                {
-                    "PASSWORD": "",
-                    "url": "",
-                    "user": "",
-                    "mail": "",
-                    "date": datetime.datetime.now().strftime('%a %d %b %Y, %I:%M%p')
-                }
-            )
-        except Exception as e:
-            self.show_error("Error creating password file", str(e))
-            return False
-
-    def add_password_file(self, rel_path):
-        """Create a new password file"""
+        print(f"Create password at {rel_path}")
         try:
             return self.passpy_obj.write_key(
                 rel_path,
@@ -1345,54 +1847,6 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         except Exception as e:
             self.show_error("Error showing context menu", str(e))
 
-    def action_add_folder(self, item):
-        """Add a subfolder"""
-        try:
-            self.in_dupplicate = True
-            path, key = utils.new_incr(self.get_abs_path(item, folder=True), "folder")
-
-            # Create directory
-            os.makedirs(path, exist_ok=True)
-
-            # Add to tree
-            child = PyQt5.QtWidgets.QTreeWidgetItem()
-            child.setText(0, key)
-
-            parent = item.parent()
-            if parent is None:
-                index = self.ui.treeWidget.indexOfTopLevelItem(item)
-                parent = self.ui.treeWidget.topLevelItem(index)
-            else:
-                parent = item
-
-            parent.addChild(child)
-            child.setFlags(child.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
-            self.resize_tree()
-            self.in_dupplicate = False
-        except Exception as e:
-            self.in_dupplicate = False
-            self.show_error("Error adding folder", str(e))
-
-    def action_add_folder_top(self, _):
-        """Add a folder at the root level"""
-        try:
-            self.in_dupplicate = True
-            path, key = utils.new_incr(self.passpy_obj.path_store, "folder")
-
-            # Create directory
-            os.makedirs(path, exist_ok=True)
-
-            # Add to tree
-            child = PyQt5.QtWidgets.QTreeWidgetItem()
-            child.setText(0, key)
-            self.ui.treeWidget.invisibleRootItem().addChild(child)
-            child.setFlags(child.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
-            self.resize_tree()
-            self.in_dupplicate = False
-        except Exception as e:
-            self.in_dupplicate = False
-            self.show_error("Error adding folder", str(e))
-
     def action_remove_folder(self, item):
         """Remove a folder and its contents"""
         try:
@@ -1455,57 +1909,6 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         except Exception as e:
             self.show_error("Error copying to clipboard", str(e))
 
-    def action_dupplicate(self, item):
-        """Duplicate a password file"""
-        try:
-            self.in_dupplicate = True
-
-            # Get original file path
-            path = self.get_abs_path(item)
-
-            # Check if filename already has an index
-            filename = item.text(0)
-            last_part = filename.split("_")[-1]
-
-            if last_part.isdigit():
-                # Increment the index
-                i = int(last_part) + 1
-                base_name = "_".join(filename.split("_")[:-1])
-                is_copied = True
-            else:
-                # Add index 1
-                i = 1
-                base_name = filename
-                is_copied = False
-
-            # Find a unique filename
-            while True:
-                if is_copied:
-                    key = f"{base_name}_{i}"
-                else:
-                    key = f"{filename}_{i}"
-
-                path_dest = os.path.join(os.sep.join(path.split(os.sep)[:-1]), key + ".gpg")
-
-                if not (os.path.isdir(path_dest) or os.path.isfile(path_dest)):
-                    break
-
-                i += 1
-
-            # Copy the file
-            shutil.copy(path, path_dest)
-
-            # Add to tree
-            child = PyQt5.QtWidgets.QTreeWidgetItem([key])
-            item.parent().addChild(child)
-            self.clicked_key = key
-            self.resize_tree()
-            child.setFlags(child.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
-            self.in_dupplicate = False
-        except Exception as e:
-            self.in_dupplicate = False
-            self.show_error("Error duplicating password", str(e))
-
     def confirm(self, func, txt, execute=True):
         """Show a confirmation dialog
 
@@ -1550,7 +1953,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             self.show_error("Error removing password", str(e))
 
     def get_abs_path(self, item, folder=False):
-        """Get absolute path for an item
+        """Get absolute path for an item with improved tracking
 
         Args:
             item: Tree widget item
@@ -1559,14 +1962,26 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         Returns:
             str: Absolute path
         """
-        if item is None and folder:
-            return self.passpy_obj.path_store
+        if item is None:
+            if folder:
+                return self.passpy_obj.path_store
+            return None
 
-        rel_path = get_rel_path(item)
+        # Build the full path by traversing up the tree
+        parts = [item.text(0)]
+        parent = item.parent()
+
+        while parent is not None:
+            parts.insert(0, parent.text(0))
+            parent = parent.parent()
+
+        # Construct the path
+        rel_path = os.path.join(*parts) if parts else ""
+
         if folder:
-            return os.path.join(self.passpy_obj.path_store, rel_path, item.text(0))
+            return os.path.join(self.passpy_obj.path_store, rel_path)
         else:
-            return os.path.join(self.passpy_obj.path_store, rel_path, item.text(0) + ".gpg")
+            return os.path.join(self.passpy_obj.path_store, rel_path + ".gpg")
 
     def on_item_table_clicked(self, row, col):
         """Handle click in password table"""
@@ -1621,10 +2036,41 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
                 self.ui.treeWidget.invisibleRootItem(),
                 rel_paths
             )
+
+            # Reset clicked item and key when loading the tree
+            self.clicked_item = None
+            self.clicked_key = None
+
+            # Debug the entire tree structure
+            self.debug_tree_structure()
+
         except Exception as e:
             import traceback
             error_message = f"{str(e)}\n\nStack trace:\n{traceback.format_exc()}"
             self.show_error("Error loading password store", error_message)
+
+    def debug_tree_structure(self):
+        """Print the entire tree structure for debugging"""
+        try:
+            print("\n--- TREE STRUCTURE DEBUG ---")
+
+            def _print_item(item, indent=0):
+                # Print current item
+                name = item.text(0)
+                print(f"{'  ' * indent}{name}")
+
+                # Print all children
+                for i in range(item.childCount()):
+                    _print_item(item.child(i), indent + 1)
+
+            # Print all top-level items
+            root = self.ui.treeWidget.invisibleRootItem()
+            for i in range(root.childCount()):
+                _print_item(root.child(i))
+
+            print("--- END TREE STRUCTURE DEBUG ---\n")
+        except Exception as e:
+            print(f"Error in debug_tree_structure: {e}")
 
     def fill_item(self, item, value):
         """Recursively fill tree with items
@@ -1659,34 +2105,29 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         except Exception as e:
             print(f"Error filling tree item: {e}")  # Don't show error dialog to avoid loops
 
-    @PyQt5.QtCore.pyqtSlot(PyQt5.QtWidgets.QTreeWidgetItem, int)
+    # @PyQt5.QtCore.pyqtSlot(PyQt5.QtWidgets.QTreeWidgetItem, int)
     def on_item_tree_clicked(self, item, _):
-        """Handle tree item click"""
+        """Handle tree item click with full path tracking"""
         try:
             key = item.text(0)
             self.clicked_item = item
             self.clicked_key = key
 
+            # Store the full path for this item
+            self.clicked_full_path = get_full_tree_path(item)
+            print(f"Clicked on: {key}")
+            print(f"Full path: {self.clicked_full_path}")
+
             # Check if this is a password file
-            if os.path.isfile(self.get_abs_path(item)):
-                # Build the path
-                parents = [key]
-                current_it = item
+            abs_path = self.get_abs_path(item)
+            if os.path.isfile(abs_path):
+                print(f"Loading password file: {abs_path}")
 
-                while True:
-                    parent = current_it.parent()
-                    if not isinstance(parent, PyQt5.QtWidgets.QTreeWidgetItem):
-                        break
-                    parent_key = parent.text(0)
-                    parents.append(parent_key)
-                    current_it = parent
-
-                parents.reverse()
-                path = os.sep.join(parents)
-
-                # Load and display the password
+                # Try to load the password
                 try:
-                    infos = self.passpy_obj.read_key(path)
+                    # Use the full path for reading the key
+                    rel_path = os.path.join(get_rel_path(item), item.text(0))
+                    infos = self.passpy_obj.read_key(rel_path)
 
                     # Copy password to clipboard if available
                     if "PASSWORD" in infos:
@@ -1821,96 +2262,6 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
             print(f"Error in dragMoveEvent: {e}")
             return event.ignore()
 
-    def dropEvent(self, event):
-        """Handle drop events for tree items"""
-        try:
-            self.in_dupplicate = True
-
-            # Get drop position and target item
-            position = event.pos()
-            item_at_position = self.ui.treeWidget.itemAt(position)
-
-            # Get destination path
-            abs_path_dir_dest = self.get_abs_path(item_at_position, folder=True)
-
-            # Get the item being moved
-            actual_item = self.ui.treeWidget.currentItem()
-            actual_item_text = actual_item.text(0)
-
-            # Build source and destination paths
-            abs_path_dest = os.path.join(abs_path_dir_dest, actual_item_text + ".gpg")
-            abs_path_source = self.get_abs_path(actual_item, folder=False)
-
-            # Verify source file exists
-            if not os.path.isfile(abs_path_source):
-                self.show_error("File Not Found", f"Source file not found: {abs_path_source}")
-                self.in_dupplicate = False
-                event.ignore()
-                return
-
-            # Create destination directory if it doesn't exist
-            os.makedirs(os.path.dirname(abs_path_dest), exist_ok=True)
-
-            # Find a unique filename if needed
-            i = 0
-            while os.path.isfile(abs_path_dest):
-                i += 1
-                if i == 1:
-                    abs_path_dest = os.path.join(abs_path_dir_dest, actual_item_text + f"_{i}.gpg")
-                else:
-                    # Handle existing numbered files
-                    parts = actual_item_text.split('_')
-                    if parts[-1].isdigit():
-                        base = '_'.join(parts[:-1])
-                    else:
-                        base = actual_item_text
-                    abs_path_dest = os.path.join(abs_path_dir_dest, f"{base}_{i}.gpg")
-
-            # Move the file
-            try:
-                # Print paths for debugging
-                print(f"Moving file from: {abs_path_source}")
-                print(f"Moving file to: {abs_path_dest}")
-
-                # Use shutil.move instead of os.rename for better cross-device support
-                import shutil
-                shutil.move(abs_path_source, abs_path_dest)
-            except FileNotFoundError:
-                self.show_error("File Not Found", f"Could not find file: {abs_path_source}")
-                self.in_dupplicate = False
-                event.ignore()
-                return
-            except PermissionError:
-                self.show_error("Permission Denied", "You don't have permission to move this file")
-                self.in_dupplicate = False
-                event.ignore()
-                return
-
-            # Update the tree item text if renamed
-            if i > 0:
-                new_name = os.path.basename(abs_path_dest)[:-len(".gpg")]
-                actual_item.setText(0, new_name)
-
-            # Remove from original parent
-            parent_item = actual_item.parent()
-            if parent_item is not None:
-                parent_item.removeChild(actual_item)
-            else:
-                self.ui.treeWidget.takeTopLevelItem(self.ui.treeWidget.indexOfTopLevelItem(actual_item))
-
-            # Add to new parent
-            if item_at_position is None:
-                self.ui.treeWidget.invisibleRootItem().addChild(actual_item)
-            else:
-                item_at_position.addChild(actual_item)
-
-            event.setDropAction(Qt.IgnoreAction)
-            event.accept()
-            self.in_dupplicate = False
-        except Exception as e:
-            self.in_dupplicate = False
-            print(f"Error in dropEvent: {e}")
-            event.ignore()
 
 
 class Logger:
