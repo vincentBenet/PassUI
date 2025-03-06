@@ -811,7 +811,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
 
             # Table events
             self.ui.tableWidget.cellChanged.connect(self.on_item_table_changed)
-            self.ui.tableWidget.cellClicked.connect(self.on_item_table_clicked)
+            # self.ui.tableWidget.cellClicked.connect(self.on_item_table_clicked)
             self.ui.tableWidget.setContextMenuPolicy(PyQt5.QtCore.Qt.CustomContextMenu)
             self.ui.tableWidget.customContextMenuRequested.connect(self.context_menu_table)
 
@@ -1091,7 +1091,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         """Setup tree event handlers"""
         try:
             self.ui.treeWidget.itemChanged.connect(self.on_item_tree_changed)
-            self.ui.treeWidget.itemClicked.connect(self.on_item_tree_clicked)
+            # self.ui.treeWidget.itemClicked.connect(self.on_item_tree_clicked)
             self.ui.treeWidget.itemExpanded.connect(self.on_item_tree_extend)
             self.ui.treeWidget.itemCollapsed.connect(self.on_item_tree_extend)
             self.ui.treeWidget.setContextMenuPolicy(PyQt5.QtCore.Qt.CustomContextMenu)
@@ -1103,7 +1103,7 @@ class PassUI(PyQt5.QtWidgets.QMainWindow):
         """Setup table event handlers"""
         try:
             self.ui.tableWidget.cellChanged.connect(self.on_item_table_changed)
-            self.ui.tableWidget.cellClicked.connect(self.on_item_table_clicked)
+            # self.ui.tableWidget.cellClicked.connect(self.on_item_table_clicked)
             self.ui.tableWidget.setContextMenuPolicy(PyQt5.QtCore.Qt.CustomContextMenu)
             self.ui.tableWidget.customContextMenuRequested.connect(self.context_menu_table)
         except Exception as e:
